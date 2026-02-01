@@ -35,3 +35,7 @@ htmlcov/
 *.sqlite3
 *.db
 *.env  # For environment variables
+
+# Nix
+result
+result-*
