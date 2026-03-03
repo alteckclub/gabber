@@ -12,6 +12,22 @@ let
     sha256 = "sha256-WkmEIuwnX130G4dZLGxILmNyMP1WMDkZckTTlm0c55M=";
   };
 
+  # Fetch espeakng-loader from PyPI (not in nixpkgs)
+  espeakngLoader = pkgs.fetchurl {
+    url = "https://files.pythonhosted.org/packages/de/1e/25ec5ab07528c0fbb215a61800a38eca05c8a99445515a02d7fa5debcb32/espeakng_loader-0.2.4-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl";
+    sha256 = "sha256-CHIbryfRPUYfa+bu2aZSd+cNaCNP9IT9i5iXsiLNy20=";
+  };
+
+  # Build espeakng-loader package
+  espeakng-loader = python312.pkgs.buildPythonPackage {
+    pname = "espeakng-loader";
+    version = "0.2.4";
+    src = espeakngLoader;
+    format = "wheel";
+    dontBuild = true;
+    doCheck = false;
+  };
+
   # Build the kittentts package from the wheel
   kittentts = python312.pkgs.buildPythonPackage {
     pname = "kittentts";
@@ -27,7 +43,22 @@ let
       transformers
       huggingface-hub
       safetensors
+      num2words
+      spacy
+      phonemizer
+      espeakng-loader
+      misaki
+      onnxruntime
+      soundfile
+      numpy
     ];
+
+    nativeBuildInputs = with python312.pkgs; [
+      setuptools
+    ];
+
+    # espeak-ng runtime dependency
+    propagatedNativeBuildInputs = [ pkgs.espeak ];
 
     # Skip tests as there are none in the wheel
     doCheck = false;
