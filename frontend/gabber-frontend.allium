@@ -1,0 +1,592 @@
+-- allium: 2
+
+-- Gabber Frontend Application Specification
+-- 
+-- Scope: Gabber frontend application for building and managing AI app graphs
+-- Includes: Graph editing, subgraph management, app management, secret management, state machine editing, app execution
+-- Excludes:
+--   - Backend engine service (separate spec)
+--   - Backend repository service (separate spec)
+--   - LiveKit integration details (implementation detail)
+--   - Specific node implementations (library specs)
+
+--------------------------------------------------------------------------------
+-- DOMAIN ENTITIES
+--------------------------------------------------------------------------------
+
+-- A named collection of nodes and connections that implements AI app behavior
+entity App {
+    id: Identifier
+    name: Text
+    created_at: Timestamp
+    updated_at: Timestamp
+    graph: Graph
+}
+
+-- A reusable graph fragment that can be embedded in other graphs
+entity SubGraph {
+    id: Identifier
+    name: Text
+    created_at: Timestamp
+    updated_at: Timestamp
+    graph: Graph
+}
+
+-- A named configuration value used across apps (e.g., API keys)
+entity Secret {
+    id: Identifier
+    name: Text
+    created_at: Timestamp
+    updated_at: Timestamp
+}
+
+--------------------------------------------------------------------------------
+-- GRAPH MODEL
+--------------------------------------------------------------------------------
+
+-- Visual representation of an AI app as interconnected nodes
+entity Graph {
+    nodes: Set<Node>
+    portals: Set<Portal>
+}
+
+-- A functional unit in the graph with typed input/output pads
+entity Node {
+    id: Identifier
+    type: NodeType
+    editor_name: Text
+    editor_position: Position
+    editor_dimensions: Dimensions?
+    pads: Set<Pad>
+    description: Text?
+    metadata: NodeMetadata
+    notes: Set<Note>
+}
+
+entity NodeMetadata {
+    primary: Text
+    secondary: Text
+    tags: Set<Text>
+}
+
+entity Note {
+    level: InfoLevel
+    message: Text
+    pad: Identifier?
+    recommendations: Set<Recommendation>
+}
+
+enum InfoLevel {
+    info
+    warning
+    error
+}
+
+entity Recommendation {
+    message: Text
+    suggested_edits: Set<Edit>
+}
+
+-- A typed connection point on a node (input or output)
+entity Pad {
+    id: Identifier
+    group: Text
+    type: PadType
+    default_allowed_types: Set<PadConstraint>
+    allowed_types: Set<PadConstraint>
+    value: PadValue
+    next_pads: Set<PadReference>
+    previous_pad: PadReference?
+    pad_links: Set<Identifier>
+}
+
+-- A reference to another pad for establishing connections
+entity PadReference {
+    node: Identifier
+    pad: Identifier
+}
+
+-- A subgraph entry point that exposes internal pads to the parent graph
+entity Portal {
+    id: Identifier
+    name: Text
+    source_node: Identifier
+    source_pad: Identifier
+    editor_position: Position
+    ends: Set<PortalEnd>
+}
+
+-- A subgraph exit point that connects to parent graph pads
+entity PortalEnd {
+    id: Identifier
+    editor_position: Position
+    next_pads: Set<PadReference>
+}
+
+--------------------------------------------------------------------------------
+-- PAD VALUE TYPES
+--------------------------------------------------------------------------------
+
+-- The type constraint for a pad's allowed values
+entity PadConstraint {
+    type: PadType
+    -- Type-specific constraints
+    max_length: Integer?
+    min_length: Integer?
+    maximum: Number?
+    minimum: Number?
+    options: Set<Text>?
+    item_type_constraints: Set<PadConstraint>?
+    object_schema: ObjectSchema?
+    node_types: Set<Text>?
+}
+
+-- A value stored in a pad
+union PadValue =
+    | StringValue
+    | IntegerValue
+    | FloatValue
+    | BooleanValue
+    | TriggerValue
+    | AudioClipValue
+    | VideoClipValue
+    | ContextMessageValue
+    | ContextMessageRoleValue
+    | EnumValue
+    | SecretReference
+    | NodeReferenceValue
+    | ToolDefinitionValue
+    | ListValue
+    | ObjectValue
+    | VisemeValue
+    | NoneValue
+
+entity StringValue { value: Text }
+entity IntegerValue { value: Integer }
+entity FloatValue { value: Number }
+entity BooleanValue { value: Boolean }
+entity TriggerValue {}
+entity AudioClipValue { transcription: Text?, duration: Duration }
+entity VideoClipValue { duration: Duration, frame_count: Integer }
+
+-- An LLM context message with role and content
+entity ContextMessageValue {
+    role: ContextMessageRole
+    tool_calls: Set<ToolCall>
+    tool_call_id: Identifier?
+    refusal: Text?
+    content: Set<ContextMessageContentItem>
+}
+
+enum ContextMessageRole {
+    user
+    assistant
+    system
+    tool
+}
+
+entity ToolCall {
+    call_id: Identifier
+    index: Integer
+    name: Text
+    arguments: Map<Text, Any>
+}
+
+entity ContextMessageContentItem {
+    content_type: ContentType
+    text: Text?
+    image: ImageContent?
+    audio: AudioContent?
+    video: VideoContent?
+}
+
+enum ContentType {
+    text
+    image
+    audio
+    video
+}
+
+entity ImageContent {
+    width: Integer
+    height: Integer
+    handle: Identifier
+    timestamp: Timestamp?
+}
+
+entity AudioContent {
+    duration: Duration
+    transcription: Text?
+    handle: Identifier
+    start_timestamp: Timestamp?
+}
+
+entity VideoContent {
+    width: Integer
+    height: Integer
+    duration: Duration
+    handle: Identifier
+    frame_count: Integer
+    start_timestamp: Timestamp?
+}
+
+entity ContextMessageRoleValue { value: ContextMessageRole }
+entity EnumValue { value: Text }
+
+-- A reference to a stored secret
+entity SecretReference {
+    secret_id: Identifier
+    name: Text
+}
+
+-- A reference to another node in the graph
+entity NodeReferenceValue { node_id: Identifier }
+
+-- An LLM tool definition
+entity ToolDefinitionValue {
+    name: Text
+    description: Text
+    parameters: Map<Text, Any>?
+    destination: ToolDestination
+}
+
+union ToolDestination =
+    | ClientTool
+    | WebhookTool
+
+entity ClientTool {}
+
+entity WebhookTool {
+    url: URL
+    retry_policy: RetryPolicy
+}
+
+entity RetryPolicy {
+    max_retries: Integer
+    backoff_factor: Number
+    initial_delay_seconds: Duration
+}
+
+entity ListValue {
+    count: Integer
+    items: Set<PadValue>
+}
+
+entity ObjectValue { value: Map<Text, Any> }
+entity VisemeValue { value: Viseme }
+
+enum Viseme {
+    SILENCE
+    PP
+    FF
+    TH
+    DD
+    KK
+    CH
+    SS
+    NN
+    RR
+    AA
+    E
+    IH
+    OH
+    OU
+}
+
+--------------------------------------------------------------------------------
+-- GRAPH EDITS
+--------------------------------------------------------------------------------
+
+-- A modification operation on a graph
+union Edit =
+    | InsertNodeEdit
+    | InsertSubGraphEdit
+    | UpdateNodeEdit
+    | RemoveNodeEdit
+    | ConnectPadEdit
+    | DisconnectPadEdit
+    | UpdatePadEdit
+    | CreatePortalEdit
+    | CreatePortalEndEdit
+    | DeletePortalEdit
+    | DeletePortalEndEdit
+    | UpdatePortalEdit
+    | UpdatePortalEndEdit
+
+entity InsertNodeEdit {
+    id: Identifier?
+    node_type: NodeType
+    editor_position: Position
+    editor_dimensions: Dimensions?
+    editor_name: Text
+}
+
+entity InsertSubGraphEdit {
+    id: Identifier?
+    subgraph_id: Identifier
+    editor_position: Position
+    editor_dimensions: Dimensions?
+    editor_name: Text
+}
+
+entity UpdateNodeEdit {
+    id: Identifier
+    editor_position: Position?
+    editor_dimensions: Dimensions?
+    editor_name: Text?
+    new_id: Identifier?
+}
+
+entity RemoveNodeEdit { node_id: Identifier }
+
+entity ConnectPadEdit {
+    node: Identifier
+    pad: Identifier
+    connected_node: Identifier
+    connected_pad: Identifier
+}
+
+entity DisconnectPadEdit {
+    node: Identifier
+    pad: Identifier
+    connected_node: Identifier
+    connected_pad: Identifier
+}
+
+entity UpdatePadEdit {
+    node: Identifier
+    pad: Identifier
+    value: PadValue
+}
+
+entity CreatePortalEdit {
+    source_node: Identifier
+    source_pad: Identifier
+    editor_position: Position
+}
+
+entity CreatePortalEndEdit {
+    portal_id: Identifier
+    editor_position: Position
+}
+
+entity DeletePortalEdit { portal_id: Identifier }
+entity DeletePortalEndEdit { portal_id: Identifier, portal_end_id: Identifier }
+entity UpdatePortalEdit { portal_id: Identifier, editor_position: Position }
+entity UpdatePortalEndEdit {
+    portal_id: Identifier
+    portal_end_id: Identifier
+    editor_position: Position
+    next_pads: Set<PadReference>
+}
+
+--------------------------------------------------------------------------------
+-- APP EXECUTION
+--------------------------------------------------------------------------------
+
+-- A runtime instance of an app
+entity AppRun {
+    run_id: Identifier
+    graph: Graph
+    connection_details: ConnectionDetails
+}
+
+-- Connection credentials for joining a runtime session
+entity ConnectionDetails {
+    url: URL
+    token: Secret
+}
+
+--------------------------------------------------------------------------------
+-- IMPORT/EXPORT
+--------------------------------------------------------------------------------
+
+-- A portable app bundle with all dependencies
+entity AppExport {
+    app: App
+    subgraphs: Set<SubGraph>
+}
+
+-- A portable subgraph bundle with nested dependencies
+entity SubGraphExport {
+    subgraph: SubGraph
+    nested_subgraphs: Set<SubGraph>
+}
+
+--------------------------------------------------------------------------------
+-- USER INTERACTIONS
+--------------------------------------------------------------------------------
+
+-- The user saves an app with a name and graph
+rule SaveApp {
+    when: UserSavesApp(name, graph)
+
+    ensures: App.created(
+        name: name,
+        graph: graph,
+        updated_at: now
+    )
+}
+
+-- The user saves a subgraph with a name and graph
+rule SaveSubGraph {
+    when: UserSavesSubGraph(name, graph)
+
+    ensures: SubGraph.created(
+        name: name,
+        graph: graph,
+        updated_at: now
+    )
+}
+
+-- The user deletes an app
+rule DeleteApp {
+    when: UserDeletesApp(app_id)
+    requires: App.exists(id: app_id)
+
+    ensures: App.deleted(id: app_id)
+}
+
+-- The user deletes a subgraph
+rule DeleteSubGraph {
+    when: UserDeletesSubGraph(subgraph_id)
+    requires: SubGraph.exists(id: subgraph_id)
+
+    ensures: SubGraph.deleted(id: subgraph_id)
+}
+
+-- The user creates an app run for execution
+rule CreateAppRun {
+    when: UserCreatesAppRun(graph)
+
+    ensures: AppRun.created(
+        graph: graph,
+        connection_details: ConnectionDetails.created()
+    )
+}
+
+-- The user adds a secret for use in apps
+rule AddSecret {
+    when: UserAddsSecret(name, value)
+
+    ensures: Secret.created(
+        name: name,
+        updated_at: now
+    )
+}
+
+-- The user updates an existing secret
+rule UpdateSecret {
+    when: UserUpdatesSecret(secret_id, new_name, new_value)
+    requires: Secret.exists(id: secret_id)
+
+    ensures: Secret.updated(
+        id: secret_id,
+        name: new_name,
+        updated_at: now
+    )
+}
+
+-- The user deletes a secret
+rule DeleteSecret {
+    when: UserDeletesSecret(secret_id)
+    requires: Secret.exists(id: secret_id)
+
+    ensures: Secret.deleted(id: secret_id)
+}
+
+-- The user imports an app bundle
+rule ImportApp {
+    when: UserImportsApp(export)
+    requires: export.subgraphs.all(sg => SubGraph.exists(id: sg.id) OR PremadeSubGraph.exists(id: sg.id))
+
+    ensures: App.created(
+        name: export.app.name,
+        graph: export.app.graph
+    )
+    ensures:
+        for sg in export.subgraphs:
+            SubGraph.created(name: sg.name, graph: sg.graph)
+}
+
+-- The user exports an app with its dependencies
+rule ExportApp {
+    when: UserExportsApp(app_id)
+    requires: App.exists(id: app_id)
+
+    let app = App.get(id: app_id)
+    let subgraph_ids = extract_subgraph_ids(app.graph)
+    let subgraphs = SubGraph.filter(id in subgraph_ids)
+
+    ensures: AppExport.produced(
+        app: app,
+        subgraphs: subgraphs
+    )
+}
+
+-- The user edits the graph by applying edits
+rule ApplyGraphEdit {
+    when: UserAppliesGraphEdit(edit, current_graph)
+
+    ensures: Graph.modified(
+        from: current_graph,
+        by: edit
+    )
+}
+
+--------------------------------------------------------------------------------
+-- STATE MACHINE EDITING
+--------------------------------------------------------------------------------
+
+-- The user adds a state and transition in state machine mode
+rule AddStateAndTransition {
+    when: UserAddsStateAndTransition(from_node, position)
+
+    ensures: Node.created(
+        type: StateNode,
+        editor_position: position
+    )
+    ensures: Edge.created(
+        from: from_node,
+        to: new_state
+    )
+}
+
+-- The user adds a transition between existing states
+rule AddTransition {
+    when: UserAddsTransition(from_node, to_node)
+
+    ensures: Edge.created(
+        from: from_node,
+        to: to_node
+    )
+}
+
+--------------------------------------------------------------------------------
+-- TYPE DEFINITIONS
+--------------------------------------------------------------------------------
+
+type NodeType = Text
+type PadType = Text
+type Position = tuple<Number, Number>
+type Dimensions = tuple<Number, Number>
+type Identifier = Text
+type Text = String
+type Integer = Int
+type Number = Float
+type Boolean = Bool
+type Duration = Number
+type URL = String
+type Any = Variant
+type Map<K, V> = Record<K, V>
+type Set<T> = Collection<T>
+
+--------------------------------------------------------------------------------
+-- DERIVED PROPERTIES
+--------------------------------------------------------------------------------
+
+-- Helper to extract subgraph IDs referenced in a graph
+func extract_subgraph_ids(graph: Graph) -> Set<Identifier> {
+    let subgraph_nodes = graph.nodes.filter(n => n.type == "SubGraph")
+    return subgraph_nodes.map(n => n.pads.find(p => p.id == "__subgraph_id__").value)
+}
