@@ -35,8 +35,9 @@ in
     };
 
     secretFile = lib.mkOption {
-      type = lib.types.path;
+      type = lib.types.str;
       description = "Path to secrets file containing API keys";
+      default = "";
     };
 
     publicHost = lib.mkOption {
