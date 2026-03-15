@@ -1,0 +1,553 @@
+-- allium: 2
+
+-- Gabber Engine Specification
+-- Distilled from engine/gabber/ implementation
+--
+-- Scope: Core graph execution engine for real-time AI applications
+-- Includes: Graph model, node execution, pad communication, type system
+-- Excludes:
+--   - Specific node implementations (STT, TTS, LLM nodes) - these are library specs
+--   - Editor service communication protocols - separate spec
+--   - Repository service - separate spec
+--   - LiveKit/WebRTC integration details - implementation mechanism
+--   - MCP (Model Context Protocol) integration - library spec
+
+-- ============================================================================
+-- CORE CONCEPTS
+-- ============================================================================
+
+-- The Gabber Engine executes real-time AI applications as directed graphs of
+-- interconnected nodes. Data flows through typed connection points (pads)
+-- between nodes, enabling composition of AI capabilities.
+
+-- An application is a graph of nodes that processes audio, video, and text
+-- in real-time. The engine manages node lifecycle, data flow, and execution.
+
+entity Application {
+    id: String
+    graph: Graph
+    status: running | stopped
+}
+
+-- ============================================================================
+-- GRAPH MODEL
+-- ============================================================================
+
+-- A Graph is a directed network of nodes connected via pads.
+-- Graphs can be nested (sub-graphs) for composition.
+
+entity Graph {
+    id: String
+    nodes: Set<Node>
+    portals: Set<Portal>           -- Graph-level connection points for sub-graphs
+    configuration: GraphConfiguration
+}
+
+-- Graph configuration stores metadata for the visual editor
+entity GraphConfiguration {
+    editor_layout: EditorLayout?
+}
+
+-- A Portal enables sub-graphs to expose internal pads to parent graphs
+entity Portal {
+    id: String
+    name: String
+    source_node: Node
+    source_pad: Pad
+    ends: Set<PortalEnd>
+}
+
+entity PortalEnd {
+    id: String
+    next_pads: Set<Pad>
+    position: Point
+}
+
+-- ============================================================================
+-- NODE SYSTEM
+-- ============================================================================
+
+-- Nodes are the fundamental building blocks of AI applications.
+-- Each node performs a specific function (e.g., STT, TTS, LLM, logic).
+
+entity Node {
+    id: String
+    type: NodeType
+    pads: Set<Pad>
+    configuration: NodeConfiguration
+    editor_representation: EditorRepresentation?
+}
+
+-- Every node has a type that determines its functionality and pad structure
+entity NodeType {
+    name: String
+    description: String
+    metadata: NodeMetadata
+}
+
+entity NodeMetadata {
+    primary_category: String
+    secondary_category: String
+    tags: Set<String>
+}
+
+entity EditorRepresentation {
+    position: Point
+    dimensions: Point?
+    name: String?
+}
+
+-- ============================================================================
+-- PAD SYSTEM (CONNECTION POINTS)
+-- ============================================================================
+
+-- Pads are typed connection points on nodes. Data flows from source pads
+-- to sink pads through explicit connections.
+
+entity Pad {
+    id: String
+    type: PadType
+    constraints: PadTypeConstraints
+    value: RuntimeValue?              -- For property pads
+    connections: Set<PadConnection>
+}
+
+-- Three pad types with different semantics
+entity PadType = 
+    | StatelessSourcePad              -- Emits discrete values/events
+    | StatelessSinkPad                -- Receives discrete values/events
+    | PropertySourcePad               -- Holds a persistent value
+    | PropertySinkPad                 -- Accepts value updates
+
+-- Type constraints ensure compatible connections
+entity PadTypeConstraints {
+    allowed_types: Set<BasePadType>
+}
+
+-- The type system for pad connections
+entity BasePadType =
+    | Trigger                         -- Event signal (no data)
+    | String
+    | Integer
+    | Float
+    | Boolean
+    | Object                          -- Generic structured data
+    | NodeReference                   -- Reference to another node
+    | Secret                          -- Reference to a secret value
+    | Audio                           -- Audio stream data
+    | Video                           -- Video stream data
+    | Enum                            -- Constrained string choice
+    | Viseme                          -- Lip-sync animation data
+
+-- ============================================================================
+-- RUNTIME DATA TYPES
+-- ============================================================================
+
+-- Values that flow through pads during execution
+
+entity RuntimeValue =
+    | Trigger                         -- Event marker
+    | String
+    | Integer
+    | Float
+    | Boolean
+    | AudioClip                       -- Audio data with transcription
+    | AudioFrame                      -- Individual audio frame
+    | VideoClip                       -- Video data sequence
+    | VideoFrame                      -- Individual video frame
+    | AVClip                          -- Synchronized audio+video
+    | TextStream                      -- Streaming text output
+    | ContextMessage                  -- LLM conversation message
+    | ToolCall                        -- Function call request
+    | ToolDefinition                  -- Function definition for LLM
+    | Enum                            -- Constrained string value
+    | Viseme                          -- Lip-sync frame
+    | Secret                          -- Secret value reference
+    | NodeReference                   -- Node reference
+    | Point                           -- 2D coordinate
+    | BoundingBox                     -- Normalized rectangle
+    | Null
+
+-- Audio with optional speech transcription
+entity AudioClip {
+    audio_frames: List<AudioFrame>
+    transcription: String?
+    duration: Duration
+}
+
+-- Single audio frame in multiple sample rates
+entity AudioFrame {
+    start_timestamp: Timestamp
+    data: AudioData                   -- Available at multiple sample rates
+}
+
+entity AudioData {
+    sample_rate: SampleRate
+    num_channels: Integer
+    duration: Duration
+}
+
+-- Video frame with RGBA data
+entity VideoFrame {
+    width: Integer
+    height: Integer
+    timestamp: Timestamp
+    format: VideoFormat
+}
+
+-- Sequence of video frames
+entity VideoClip {
+    video_frames: List<VideoFrame>
+    duration: Duration
+}
+
+-- Synchronized audio and video
+entity AVClip {
+    audio: AudioClip
+    video: VideoClip
+}
+
+-- Streaming text (e.g., from LLM)
+entity TextStream {
+    -- Stream of text chunks, terminated by EOS
+}
+
+-- LLM conversation message with multimodal content
+entity ContextMessage {
+    role: MessageRole
+    content: List<ContentItem>
+    tool_calls: List<ToolCall>?
+    tool_call_id: String?
+}
+
+entity MessageRole = system | user | assistant | tool
+
+entity ContentItem =
+    | TextContent
+    | AudioContent
+    | VideoContent
+    | ImageContent
+
+entity TextContent { content: String }
+entity AudioContent { clip: AudioClip }
+entity VideoContent { clip: VideoClip }
+entity ImageContent { frame: VideoFrame }
+
+-- Function call from LLM
+entity ToolCall {
+    call_id: String
+    name: String
+    arguments: Map<String, Value>
+    index: Integer
+}
+
+-- Function definition for LLM tool use
+entity ToolDefinition {
+    name: String
+    description: String
+    parameters: JsonObject?
+    destination: ToolDestination
+}
+
+entity ToolDestination =
+    | Webhook                         -- Send to external service
+    | Client                          -- Send to frontend
+
+-- Lip-sync animation data
+entity Viseme {
+    value: VisemeType
+}
+
+entity VisemeType =
+    | SILENCE | PP | FF | TH | DD | kk | CH | SS | nn | RR
+    | aa | E | ih | oh | ou
+
+-- ============================================================================
+-- PAD CONNECTIONS AND DATA FLOW
+-- ============================================================================
+
+-- Pads connect to form data paths through the graph
+entity PadConnection {
+    source_pad: Pad
+    target_pad: Pad
+}
+
+-- Rules for pad connections
+rule ConnectPads {
+    when: SourcePad.connect(target: SinkPad)
+
+    requires: source_pad.can_connect(target)
+    
+    ensures: PadConnection.created(
+        source: source_pad,
+        target: target
+    )
+    ensures: target_pad.set_previous_pad(source_pad)
+    ensures: source_pad.add_next_pad(target)
+}
+
+-- Type compatibility check for connections
+rule PadTypeCompatibility {
+    when: source_pad.can_connect(target: SinkPad)
+
+    requires: target.get_previous_pad() == null   -- Single input constraint
+
+    ensures: 
+        intersection = INTERSECTION(
+            source_pad.get_type_constraints(),
+            target.get_type_constraints()
+        )
+    ensures: intersection != empty
+
+    -- Type constraints propagate through connected pads
+    ensures: 
+        for p in connected_pad_cluster(source_pad):
+            p.set_type_constraints(intersection)
+}
+
+-- Data flows from source to all connected sinks
+rule DataPropagation {
+    when: source_pad.push_item(value: RuntimeValue, ctx: RequestContext)
+
+    requires: source_pad is SourcePad
+
+    ensures: 
+        for sink in source_pad.get_next_pads():
+            sink._get_queue().put(
+                Item(value: value, ctx: new_context(ctx))
+            )
+    ensures: ctx.complete()
+}
+
+-- ============================================================================
+-- NODE EXECUTION
+-- ============================================================================
+
+-- Each node has a lifecycle: instantiate, resolve pads, run, cleanup
+
+rule NodeLifecycle {
+    when: Node.execute()
+
+    ensures: node.resolve_pads()         -- Discover pad structure
+    ensures: node.run()                  -- Begin execution
+    ensures: node.cleanup()              -- Graceful shutdown
+}
+
+-- Nodes dynamically construct their pad structure
+rule NodeResolvePads {
+    when: node.resolve_pads()
+
+    ensures: 
+        for pad in node.pads:
+            pad.set_owner_node(node)
+            pad._resolve_type_constraints()
+}
+
+-- ============================================================================
+-- STATE MACHINE NODE
+-- ============================================================================
+
+-- The StateMachine node provides finite state machine capability.
+-- This is a core node type that demonstrates how complex nodes are specified.
+
+entity StateMachineNode extends Node {
+    configuration: StateMachineConfiguration
+    current_state: Enum
+    previous_state: Enum
+    parameters: List<Parameter>
+}
+
+entity StateMachineConfiguration {
+    states: List<State>
+    transitions: List<Transition>
+    entry_state: String?
+}
+
+entity State {
+    id: String
+    name: String
+    position: Point
+}
+
+entity Transition {
+    id: String
+    from_state: String
+    to_state: String
+    conditions: List<Condition>
+}
+
+entity Condition {
+    parameter_name: String?
+    operator: ComparisonOperator
+    value: Any?
+}
+
+entity ComparisonOperator =
+    | "<" | "<=" | "==" | "!=" | ">=" | ">"
+    | "NON_EMPTY" | "EMPTY"
+    | "STARTS_WITH" | "ENDS_WITH" | "CONTAINS"
+    | "TRUE" | "FALSE"
+
+rule StateMachineTransition {
+    when: StateMachineNode.check_transitions(ctx, from_state, current_state)
+
+    requires: 
+        transition = StateMachineNode.transitions.find(
+            t => t.from_state == from_state
+                 && conditions_met(t.conditions, parameters)
+        )
+
+    ensures: 
+        StateMachineNode.previous_state = current_state
+        StateMachineNode.current_state = transition.to_state
+        previous_state_pad.push_item(current_state, ctx)
+        current_state_pad.push_item(transition.to_state, ctx)
+}
+
+-- ============================================================================
+-- SUBGRAPH COMPOSITION
+-- ============================================================================
+
+-- Sub-graphs enable graph reuse and hierarchical composition
+
+entity SubGraphNode extends Node {
+    sub_graph: Graph
+    sub_graph_id: String
+}
+
+-- Portal pads expose internal graph structure
+entity ProxyPropertySink extends PropertySinkPad {
+    target_pad: Pad           -- Pad inside sub-graph
+}
+
+entity ProxyPropertySource extends PropertySourcePad {
+    target_pad: Pad
+}
+
+entity ProxyStatelessSink extends StatelessSinkPad {
+    target_pad: Pad
+}
+
+-- ============================================================================
+-- SECRET MANAGEMENT
+-- ============================================================================
+
+-- Secrets are external credentials referenced by nodes
+
+entity Secret {
+    secret_id: String
+    name: String
+}
+
+entity PublicSecret {
+    id: String
+    name: String
+}
+
+-- ============================================================================
+-- TYPE CONSTRAINT SYSTEM
+-- ============================================================================
+
+-- Type constraints are intersected across connected pads
+
+rule TypeConstraintIntersection {
+    when: pads = connected_pad_cluster(pad)
+
+    ensures: 
+        intersection = pad.get_default_type_constraints()
+        for p in pads:
+            intersection = INTERSECTION(intersection, p.get_default_type_constraints())
+        for p in pads:
+            p.set_type_constraints(intersection)
+}
+
+-- ============================================================================
+-- CONTEXT AND REQUEST HANDLING
+-- ============================================================================
+
+-- RequestContext tracks causal chains of events through the graph
+
+entity RequestContext {
+    parent: RequestContext?
+    timeout: Duration
+    originator: String
+    publisher_metadata: Any?
+}
+
+rule RequestContextPropagation {
+    when: source_pad.push_item(value, ctx)
+
+    ensures: 
+        new_ctx = RequestContext(
+            parent: ctx,
+            timeout: ctx._timeout_s,
+            originator: source_pad.get_id(),
+            publisher_metadata: ctx.publisher_metadata
+        )
+    ensures: Item(value: value, ctx: new_ctx)
+
+    -- Child context inherits from parent
+    ensures: new_ctx.original_request = ctx.original_request
+}
+
+-- ============================================================================
+-- GRAPH OPERATIONS
+-- ============================================================================
+
+rule LoadGraphFromSnapshot {
+    when: Graph.load(snapshot: GraphEditorRepresentation)
+
+    ensures: 
+        for node_data in snapshot.nodes:
+            node = Node.create(
+                type: node_data.type,
+                configuration: node_data.pads
+            )
+            Graph.nodes.add(node)
+    
+    ensures: 
+        for link in snapshot.pad_links:
+            source_pad.connect(target_pad)
+    
+    ensures: 
+        for portal in snapshot.portals:
+            Graph.portals.add(portal)
+}
+
+rule EditGraph {
+    when: Graph.apply_edit(edit: GraphEdit)
+
+    ensures: 
+        if edit.type == INSERT_NODE:
+            Node.create(edits.node_type)
+        if edit.type == REMOVE_NODE:
+            Node.delete(edit.node_id)
+        if edit.type == CONNECT_PAD:
+            SourcePad.connect(SinkPad)
+        if edit.type == DISCONNECT_PAD:
+            Pad.disconnect()
+        if edit.type == UPDATE_NODE:
+            Node.update(edit)
+        if edit.type == UPDATE_PAD:
+            Pad.update(edit)
+}
+
+-- ============================================================================
+-- QUERY ELIGIBLE NODES
+-- ============================================================================
+
+-- Frontend queries which nodes can connect to a given pad
+
+rule QueryEligibleNodes {
+    when: Graph.query_eligible_nodes(source_pad: Pad)
+
+    requires: source_pad is SourcePad
+
+    ensures: 
+        eligible = [
+            item for item in library_items
+            for pad in item.pads
+            if source_pad.can_connect(pad) and pad is SinkPad
+        ]
+    ensures: EligibleNodesResponse(eligible_items: eligible)
+}
