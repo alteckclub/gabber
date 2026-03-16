@@ -1,0 +1,324 @@
+-- allium: 2
+
+-- MCP Integration Protocol Specification
+-- Formal specification for Model Context Protocol integration in Gabber
+
+-- Scope: MCP proxy client, computer use server, and engine integration
+-- Includes: Protocol details, data channel transport, server discovery, connection providers
+-- Deliverable: specs/mcp.allium
+
+-- ============================================================================
+-- ENUMS AND TYPE DEFINITIONS
+-- ============================================================================
+
+enum MCPTransportType {
+    stdio
+    sse
+}
+
+enum ConnectionType {
+    mcp_proxy_connection
+}
+
+-- ============================================================================
+-- CONFIGURATION
+-- ============================================================================
+
+config {
+    proxy_reconnect_delay: Duration = 2.seconds
+    config_file_path: String = "mcp.yaml"
+    data_channel_topic_prefix: String = "__mcp__:"
+    json_rpc_version: String = "2.0"
+}
+
+-- ============================================================================
+-- VALUE TYPES
+-- ============================================================================
+
+value MCPServerTransport {
+    type: MCPTransportType
+    command: String?
+    args: List<String>?
+    cwd: String?
+    env: Map<String, String>?
+    url: String?
+}
+
+value MCPServer {
+    name: String
+    transport: MCPServerTransport
+}
+
+value MCPServerConfig {
+    servers: List<MCPServer>
+}
+
+value ConnectionDetails {
+    url: String
+    token: String
+    room_name: String
+}
+
+value JSONRPCMessage {
+    jsonrpc: String = "2.0"
+    id: Integer?
+    method: String?
+    params: Any?
+    result: Any?
+    error: ErrorObject?
+}
+
+value ErrorObject {
+    code: Integer
+    message: String
+    data: Any?
+}
+
+value SessionMessage {
+    message: JSONRPCMessage
+}
+
+-- ============================================================================
+-- EXTERNAL ENTITIES
+-- ============================================================================
+
+external entity LiveKitRoom {
+    identity: String
+}
+
+external entity LiveKitParticipant {
+    identity: String
+    is_local: Boolean
+}
+
+external entity DataPacket {
+    topic: String
+    data: String
+    participant: LiveKitParticipant?
+}
+
+-- ============================================================================
+-- CORE ENTITIES
+-- ============================================================================
+
+entity MCPServerProvider {
+    config_file: String = config.config_file_path
+    get_config: MCPServerConfig
+}
+
+entity ConnectionProvider {
+    get_connection: (run_id: String) -> ConnectionDetails
+}
+
+entity LocalConnectionProvider {
+    api_url: String = "http://localhost:8001"
+    get_connection: (run_id: String) -> ConnectionDetails
+}
+
+entity MCPProxy {
+    room: LiveKitRoom
+    server: MCPServer
+    mcp_name: String
+    topic: String
+    is_running: Boolean = False
+    session: Any?
+}
+
+entity MCPProxyClient {
+    room: LiveKitRoom
+    mcp_name: String
+    other_read_stream: Any
+    other_write_stream: Any
+    topic: String
+}
+
+entity MCPDataChannelTransport {
+    room: LiveKitRoom
+    participant_identity: String?
+    mcp_name: String
+    topic: String
+}
+
+entity MCPComputerUseServer {
+    name: String = "computer-use-server"
+    tools: Set<String>
+}
+
+entity ComputerUseTool {
+    name: String
+    description: String
+    input_schema: Any
+}
+
+entity App {
+    run_id: String
+    connection_provider: ConnectionProvider
+    server_provider: MCPServerProvider
+    connection: LiveKitRoom?
+}
+
+entity ProxySupervisor {
+    room: LiveKitRoom
+    tasks: List<Any>
+    proxies: List<MCPProxy>
+    _closed: Boolean = False
+}
+
+-- ============================================================================
+-- RULES
+-- ============================================================================
+
+rule MCPServerConfigurationLoad {
+    when: provider: MCPServerProvider.get_config
+
+    ensures:
+        config = MCPServerConfig(servers = provider servers)
+        for server in config.servers:
+            server.name is not empty
+
+    @guidance
+        -- Configuration file is loaded from GABBER_MCP_CONFIG or "mcp.yaml".
+        -- YAML is parsed and validated against MCPServerConfig schema.
+}
+
+rule MCPProxyLifecycle {
+    when: proxy: MCPProxy.run
+
+    requires: proxy.is_running = False
+
+    ensures: proxy.is_running = True
+    ensures: proxy.session != null
+
+    @guidance
+        -- Proxy establishes connection to MCP server via configured transport.
+        -- For stdio: spawns subprocess with command, args, cwd, env.
+        -- For SSE: connects to HTTP SSE endpoint.
+        -- Subscribes to LiveKit data channel on topic.
+}
+
+rule MCPProxyCleanup {
+    when: proxy: MCPProxy.aclose
+
+    requires: proxy.is_running = True
+
+    ensures: proxy.is_running = False
+    ensures: proxy.session = null
+
+    @guidance
+        -- Gracefully shuts down the proxy.
+        -- Closes MCP client connection.
+        -- Removes data channel event handlers.
+}
+
+rule DataChannelMessageRouting {
+    when: packet: DataPacket
+
+    ensures:
+        if packet.topic.endswith(config.data_channel_topic_prefix + ":"):
+            mcp_name = packet.topic after config.data_channel_topic_prefix
+            proxy = MCPProxy.find(p where p.mcp_name = mcp_name)
+            proxy.on_message(packet)
+    @guidance
+        -- Data channel packets with MCP topics are routed to appropriate proxy client.
+        -- Topic format is "__mcp__:{server_name}".
+        -- Messages are validated as JSON-RPC before forwarding.
+}
+
+rule MCPMessageValidation {
+    when: message: JSONRPCMessage
+
+    ensures: message.jsonrpc = config.json_rpc_version
+
+    @guidance
+        -- All incoming messages must be valid JSON-RPC 2.0.
+        -- Model validation uses Pydantic for schema enforcement.
+}
+
+rule ServerDiscoveryAndProvisioning {
+    when: app: App.run
+
+    ensures:
+        config = app.server_provider.get_config
+        for server in config.servers:
+            MCPProxy.created(
+                room = app.connection,
+                server = server,
+                mcp_name = server.name,
+                topic = config.data_channel_topic_prefix + server.name
+            )
+
+    @guidance
+        -- App loads server configuration on startup.
+        -- Creates and starts a proxy for each configured server.
+        -- Proxies are supervised with automatic reconnection on failure.
+}
+
+rule ConnectionProviderResolution {
+    when: provider: LocalConnectionProvider.get_connection(run_id)
+
+    ensures:
+        details = ConnectionDetails(
+            url = provider.api_url + "/livekit",
+            token = provider.fetch_token(run_id),
+            room_name = run_id
+        )
+
+    @guidance
+        -- Local connection provider fetches details from repository service.
+        -- HTTP POST to /app/mcp_proxy_connection with run_id.
+        -- Returns LiveKit connection credentials scoped to the run.
+}
+
+rule ProxySupervision {
+    when: supervisor: ProxySupervisor.add_server(server)
+
+    ensures:
+        proxy = MCPProxy.created(
+            room = supervisor.room,
+            server = server
+        )
+        supervisor.proxies = supervisor.proxies + proxy
+
+    @guidance
+        -- Supervisor creates proxy for each server.
+        -- Proxy runs in loop with reconnection on failure.
+        -- Each proxy restart has 2-second delay.
+}
+
+-- ============================================================================
+-- INVARIANTS
+-- ============================================================================
+
+invariant ValidServerConfiguration {
+    for server in MCPServerConfig.servers:
+        server.name is not empty
+}
+
+invariant UniqueServerNames {
+    for s1 in MCPServerConfig.servers:
+        for s2 in MCPServerConfig.servers:
+            s1 != s2 implies s1.name != s2.name
+}
+
+invariant ActiveProxyPerServer {
+    for server in MCPServerConfig.servers:
+        count(proxy in MCPProxy where proxy.server = server and proxy.is_running = True) = 1
+}
+
+invariant DataChannelTopicFormat {
+    for proxy in MCPProxy:
+        proxy.topic starts_with config.data_channel_topic_prefix
+}
+
+invariant JSONRPCVersion {
+    for message in JSONRPCMessage:
+        message.jsonrpc = config.json_rpc_version
+}
+
+-- ============================================================================
+-- OPEN QUESTIONS
+-- ============================================================================
+
+open question "Cloud backend support - what is the timeline for cloud MCP proxy deployment?"
+open question "Server authentication - should MCP servers require authentication tokens?"
+open question "Resource limits - should there be concurrency limits per MCP server?"
