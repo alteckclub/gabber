@@ -1,21 +1,21 @@
-||-- allium: 2
+-- allium: 2
 
-||-- Gabber Repository Service Specification
-||-- Distilled from engine/gabber/services/repository/
-||--
-||-- Scope: HTTP API for app and subgraph management
-||-- Includes: CRUD operations, import/export, secrets management, app execution
-||-- Excludes:
-||--   - Graph editor protocol (see editor.allium)
-||--   - Engine graph execution (see engine.allium)
-||--   - STT/TTS services (see services.allium)
+-- Gabber Repository Service Specification
+-- Distilled from engine/gabber/services/repository/
+--
+-- Scope: HTTP API for app and subgraph management
+-- Includes: CRUD operations, import/export, secrets management, app execution
+-- Excludes:
+--   - Graph editor protocol (see editor.allium)
+--   - Engine graph execution (see engine.allium)
+--   - STT/TTS services (see services.allium)
 
-||-- ============================================================================
-||-- SERVICE ARCHITECTURE
-||-- ============================================================================
+-- ============================================================================
+-- SERVICE ARCHITECTURE
+-- ============================================================================
 
-||-- The Repository Service is an HTTP server that manages apps and subgraphs.
-||-- It provides persistent storage, import/export functionality, and app execution.
+-- The Repository Service is an HTTP server that manages apps and subgraphs.
+-- It provides persistent storage, import/export functionality, and app execution.
 
 entity RepositoryServer {
     port: Integer               -- HTTP server port (default: 8001)
@@ -24,29 +24,29 @@ entity RepositoryServer {
     secret_provider: SecretProvider
 }
 
-||-- ============================================================================
-||-- DATA MODELS
-||-- ============================================================================
+-- ============================================================================
+-- DATA MODELS
+-- ============================================================================
 
-||-- Core entities stored in the repository
+-- Core entities stored in the repository
 
 entity RepositoryApp {
     id: String                  -- UUID identifier
     name: String                -- Human-readable name
-    created_at: DateTime
-    updated_at: DateTime
+    created_at: Timestamp
+    updated_at: Timestamp
     graph: GraphEditorRepresentation  -- The app's graph definition
 }
 
 entity RepositorySubGraph {
     id: String                  -- UUID identifier
     name: String                -- Human-readable name
-    created_at: DateTime
-    updated_at: DateTime
+    created_at: Timestamp
+    updated_at: Timestamp
     graph: GraphEditorRepresentation  -- The subgraph's graph definition
 }
 
-||-- Export formats for import/export operations
+-- Export formats for import/export operations
 
 entity AppExport {
     app: RepositoryApp
@@ -58,34 +58,34 @@ entity SubGraphExport {
     nested_subgraphs: List<RepositorySubGraph>  -- Nested subgraph dependencies
 }
 
-||-- Connection details for app execution
+-- Connection details for app execution
 
 entity AppRunConnectionDetails {
     url: String                 -- LiveKit server URL
     token: String               -- JWT token for authentication
 }
 
-||-- Secret management
+-- Secret management
 
 entity PublicSecret {
     name: String                -- Secret identifier
     value: String               -- Secret value (masked in responses)
 }
 
-||-- ============================================================================
-||-- HTTP API ENDPOINTS
-||-- ============================================================================
+-- ============================================================================
+-- HTTP API ENDPOINTS
+-- ============================================================================
 
-||-- The Repository Service exposes the following HTTP endpoints using aiohttp.
-||-- All endpoints support CORS from any origin.
+-- The Repository Service exposes the following HTTP endpoints using aiohttp.
+-- All endpoints support CORS from any origin.
 
-||-- ============================================================================
-||-- APP ENDPOINTS
-||-- ============================================================================
+-- ============================================================================
+-- APP ENDPOINTS
+-- ============================================================================
 
-||-- List all apps
-||-- GET /app/list
-||-- Returns: ListAppsResponse
+-- List all apps
+-- GET /app/list
+-- Returns: ListAppsResponse
 
 rule AppListApps {
     when: GET /app/list
@@ -93,71 +93,71 @@ rule AppListApps {
     ensures:
         app_dir = file_path + "/app"
         files = list_directory(app_dir)
-        apps = []
+        apps = Set<RepositoryApp>
         for file in files:
             if file.endswith(".json"):
                 content = read_file(file_path + "/app/" + file)
                 app = RepositoryApp.parse_json(content)
-                apps.append(app)
+                apps.add(app)
         sorted_apps = sort_by_created_at_desc(apps)
-        return ListAppsResponse(apps=sorted_apps)
+        ListAppsResponse.created(apps: sorted_apps)
 }
 
-||-- Get a specific app
-||-- GET /app/{id}
-||-- Returns: GetAppResponse
-||-- Errors: 404 if app not found
+-- Get a specific app
+-- GET /app/{id}
+-- Returns: GetAppResponse
+-- Errors: 404 if app not found
 
 rule AppGetApp {
     when: GET /app/{id}
 
-    requires: id is valid UUID
+    requires: length(id) = 36
 
     ensures:
         file_path = file_path + "/app/" + id + ".json"
         if file_exists(file_path):
             content = read_file(file_path)
             app = RepositoryApp.parse_json(content)
-            return GetAppResponse(app=app)
-        else:
-            return HTTPResponse(status=404, body={"status": "error", "message": "App not found"})
+            GetAppResponse.created(app: app)
+        if not file_exists(file_path):
+            HTTPResponse.created(status: 404)
 }
 
-||-- Create or update an app
-||-- POST /app
-||-- Body: SaveAppRequest
-||-- Returns: SaveAppResponse
+-- Create or update an app
+-- POST /app
+-- Body: SaveAppRequest
+-- Returns: SaveAppResponse
 
 rule AppSaveApp {
     when: POST /app with SaveAppRequest
 
     ensures:
-        if request.id is provided:
+        if request.id != null:
             existing_app = load_app(request.id)
-            if existing_app:
+            if existing_app != null:
                 existing_app.name = request.name
                 existing_app.graph = request.graph
                 existing_app.updated_at = now()
                 save_app(existing_app)
-                return SaveAppResponse(app=existing_app)
-            else:
-                return HTTPResponse(status=404, body={"status": "error", "message": "App not found"})
-        else:
-            new_app = RepositoryApp(
-                id=generate_uuid(),
-                name=request.name,
-                graph=request.graph,
-                created_at=now(),
-                updated_at=now()
+                SaveAppResponse.created(app: existing_app)
+            if existing_app = null:
+                HTTPResponse.created(status: 404)
+        if request.id = null:
+            new_app = RepositoryApp.created(
+                id: generate_uuid(),
+                name: request.name,
+                graph: request.graph,
+                created_at: now(),
+                updated_at: now()
             )
             save_app(new_app)
-            return SaveAppResponse(app=new_app)
+            SaveAppResponse.created(app: new_app)
 }
 
-||-- Delete an app
-||-- DELETE /app/{id}
-||-- Returns: Success response
-||-- Errors: 404 if app not found
+-- Delete an app
+-- DELETE /app/{id}
+-- Returns: Success response
+-- Errors: 404 if app not found
 
 rule AppDeleteApp {
     when: DELETE /app/{id}
@@ -166,73 +166,73 @@ rule AppDeleteApp {
         file_path = file_path + "/app/" + id + ".json"
         if file_exists(file_path):
             delete_file(file_path)
-            return HTTPResponse(status=200, body={"status": "success", "id": id})
-        else:
-            return HTTPResponse(status=404, body={"status": "error", "message": "App not found"})
+            HTTPResponse.created(status: 200)
+        if not file_exists(file_path):
+            HTTPResponse.created(status: 404)
 }
 
-||-- Import an app with its subgraphs
-||-- POST /app/import
-||-- Body: AppExport
-||-- Returns: SaveAppResponse
+-- Import an app with its subgraphs
+-- POST /app/import
+-- Body: AppExport
+-- Returns: SaveAppResponse
 
 rule AppImportApp {
     when: POST /app/import with AppExport
 
     ensures:
-        mapping = {}
-        
-        # Import all subgraphs first
+        mapping = Map<String, String>
+
+        -- Import all subgraphs first
         for sg in export.subgraphs:
             new_sg = import_subgraph_with_id_conflict_resolution(sg)
             if sg.id != new_sg.id:
-                mapping[sg.id] = new_sg.id
-        
-        # Import the app
+                mapping.put(sg.id, new_sg.id)
+
+        -- Import the app
         new_app = import_app_with_id_conflict_resolution(export.app)
-        
-        # Update graph references to use new subgraph IDs
-        if mapping is not empty:
+
+        -- Update graph references to use new subgraph IDs
+        if mapping != {}:
             update_graph_subgraph_references(new_app.graph, mapping)
-        
-        return SaveAppResponse(app=new_app)
+
+        SaveAppResponse.created(app: new_app)
 }
 
-||-- Export an app with its subgraphs
-||-- GET /app/{id}/export
-||-- Returns: ExportAppResponse
+-- Export an app with its subgraphs
+-- GET /app/{id}/export
+-- Returns: ExportAppResponse
 
 rule AppExportApp {
     when: GET /app/{id}/export
 
     ensures:
         app = load_app(id)
-        
-        # Extract subgraph IDs referenced by the app
+
+        -- Extract subgraph IDs referenced by the app
         subgraph_ids = extract_subgraph_ids(app.graph)
-        
-        # Load all referenced subgraphs
-        subgraphs = []
+
+        -- Load all referenced subgraphs
+        subgraphs = Set<RepositorySubGraph>
         for sg_id in subgraph_ids:
             sg = load_subgraph(sg_id)
-            if sg is not null:
-                # Remove secret options for security
+            if sg != null:
+                -- Remove secret options for security
                 sg.graph = strip_secret_options(sg.graph)
-                subgraphs.append(sg)
-        
-        # Remove secret options from app
+                subgraphs.add(sg)
+
+        -- Remove secret options from app
         app.graph = strip_secret_options(app.graph)
-        
-        return ExportAppResponse(export=AppExport(app=app, subgraphs=subgraphs))
+
+        ExportAppResponse.created(export: AppExport.created(app: app, subgraphs: subgraphs))
 }
 
-||-- ============================================================================
-||-- SUBGRAPH ENDPOINTS
-||-- ============================================================================
+-- ============================================================================
+-- SUBGRAPH ENDPOINTS
+-- ============================================================================
 
-||-- List all subgraphs
-||-- GET /sub_graph/list
-||-- Returns: ListSubgraphsResponse
+-- List all subgraphs
+-- GET /sub_graph/list
+-- Returns: ListSubgraphsResponse
 
 rule SubgraphListSubgraphs {
     when: GET /sub_graph/list
@@ -240,71 +240,71 @@ rule SubgraphListSubgraphs {
     ensures:
         subgraph_dir = file_path + "/sub_graph"
         files = list_directory(subgraph_dir)
-        subgraphs = []
+        subgraphs = Set<RepositorySubGraph>
         for file in files:
             if file.endswith(".json"):
                 content = read_file(file_path + "/sub_graph/" + file)
                 subgraph = RepositorySubGraph.parse_json(content)
-                subgraphs.append(subgraph)
+                subgraphs.add(subgraph)
         sorted_subgraphs = sort_by_created_at_desc(subgraphs)
-        return ListSubgraphsResponse(sub_graphs=sorted_subgraphs)
+        ListSubgraphsResponse.created(sub_graphs: sorted_subgraphs)
 }
 
-||-- Get a specific subgraph
-||-- GET /sub_graph/{id}
-||-- Returns: GetSubgraphResponse
-||-- Errors: 404 if subgraph not found
+-- Get a specific subgraph
+-- GET /sub_graph/{id}
+-- Returns: GetSubgraphResponse
+-- Errors: 404 if subgraph not found
 
 rule SubgraphGetSubgraph {
     when: GET /sub_graph/{id}
 
-    requires: id is valid UUID
+    requires: length(id) = 36
 
     ensures:
         file_path = file_path + "/sub_graph/" + id + ".json"
         if file_exists(file_path):
             content = read_file(file_path)
             subgraph = RepositorySubGraph.parse_json(content)
-            return GetSubgraphResponse(sub_graph=subgraph)
-        else:
-            return HTTPResponse(status=404, body={"status": "error", "message": "Subgraph not found"})
+            GetSubgraphResponse.created(sub_graph: subgraph)
+        if not file_exists(file_path):
+            HTTPResponse.created(status: 404)
 }
 
-||-- Create or update a subgraph
-||-- POST /sub_graph
-||-- Body: SaveSubgraphRequest
-||-- Returns: SaveSubgraphResponse
+-- Create or update a subgraph
+-- POST /sub_graph
+-- Body: SaveSubgraphRequest
+-- Returns: SaveSubgraphResponse
 
 rule SubgraphSaveSubgraph {
     when: POST /sub_graph with SaveSubgraphRequest
 
     ensures:
-        if request.id is provided:
+        if request.id != null:
             existing_sg = load_subgraph(request.id)
-            if existing_sg:
+            if existing_sg != null:
                 existing_sg.name = request.name
                 existing_sg.graph = request.graph
                 existing_sg.updated_at = now()
                 save_subgraph(existing_sg)
-                return SaveSubgraphResponse(sub_graph=existing_sg)
-            else:
-                return HTTPResponse(status=404, body={"status": "error", "message": "Subgraph not found"})
-        else:
-            new_sg = RepositorySubGraph(
-                id=generate_uuid(),
-                name=request.name,
-                graph=request.graph,
-                created_at=now(),
-                updated_at=now()
+                SaveSubgraphResponse.created(sub_graph: existing_sg)
+            if existing_sg = null:
+                HTTPResponse.created(status: 404)
+        if request.id = null:
+            new_sg = RepositorySubGraph.created(
+                id: generate_uuid(),
+                name: request.name,
+                graph: request.graph,
+                created_at: now(),
+                updated_at: now()
             )
             save_subgraph(new_sg)
-            return SaveSubgraphResponse(sub_graph=new_sg)
+            SaveSubgraphResponse.created(sub_graph: new_sg)
 }
 
-||-- Delete a subgraph
-||-- DELETE /sub_graph/{id}
-||-- Returns: Success response
-||-- Errors: 404 if subgraph not found
+-- Delete a subgraph
+-- DELETE /sub_graph/{id}
+-- Returns: Success response
+-- Errors: 404 if subgraph not found
 
 rule SubgraphDeleteSubgraph {
     when: DELETE /sub_graph/{id}
@@ -313,78 +313,78 @@ rule SubgraphDeleteSubgraph {
         file_path = file_path + "/sub_graph/" + id + ".json"
         if file_exists(file_path):
             delete_file(file_path)
-            return HTTPResponse(status=200, body={"status": "success", "id": id})
-        else:
-            return HTTPResponse(status=404, body={"status": "error", "message": "Subgraph not found"})
+            HTTPResponse.created(status: 200)
+        if not file_exists(file_path):
+            HTTPResponse.created(status: 404)
 }
 
-||-- Import a subgraph with nested subgraphs
-||-- POST /sub_graph/import
-||-- Body: SubGraphExport
-||-- Returns: SaveSubgraphResponse
+-- Import a subgraph with nested subgraphs
+-- POST /sub_graph/import
+-- Body: SubGraphExport
+-- Returns: SaveSubgraphResponse
 
 rule SubgraphImportSubgraph {
     when: POST /sub_graph/import with SubGraphExport
 
     ensures:
-        mapping = {}
-        
-        # Import all nested subgraphs first
+        mapping = Map<String, String>
+
+        -- Import all nested subgraphs first
         for sg in export.nested_subgraphs:
             new_sg = import_subgraph_with_id_conflict_resolution(sg)
             if sg.id != new_sg.id:
-                mapping[sg.id] = new_sg.id
-        
-        # Import the main subgraph
+                mapping.put(sg.id, new_sg.id)
+
+        -- Import the main subgraph
         new_sg = import_subgraph_with_id_conflict_resolution(export.subgraph)
-        
-        # Update graph references to use new subgraph IDs
-        if mapping is not empty:
+
+        -- Update graph references to use new subgraph IDs
+        if mapping != {}:
             update_graph_subgraph_references(new_sg.graph, mapping)
-        
-        return SaveSubgraphResponse(sub_graph=new_sg)
+
+        SaveSubgraphResponse.created(sub_graph: new_sg)
 }
 
-||-- Export a subgraph with nested subgraphs
-||-- GET /sub_graph/{id}/export
-||-- Returns: ExportSubGraphResponse
+-- Export a subgraph with nested subgraphs
+-- GET /sub_graph/{id}/export
+-- Returns: ExportSubGraphResponse
 
 rule SubgraphExportSubgraph {
     when: GET /sub_graph/{id}/export
 
     ensures:
         subgraph = load_subgraph(id)
-        
-        # Recursively extract all nested subgraph IDs
+
+        -- Recursively extract all nested subgraph IDs
         subgraph_ids = extract_all_nested_subgraph_ids(subgraph.graph)
-        
-        # Load all nested subgraphs
-        nested_subgraphs = []
-        processed_ids = set()
+
+        -- Load all nested subgraphs
+        nested_subgraphs = Set<RepositorySubGraph>
+        processed_ids = Set<String>
         for sg_id in subgraph_ids:
             if sg_id not in processed_ids:
                 sg = load_subgraph(sg_id)
-                if sg is not null:
+                if sg != null:
                     sg.graph = strip_secret_options(sg.graph)
-                    nested_subgraphs.append(sg)
+                    nested_subgraphs.add(sg)
                     processed_ids.add(sg_id)
-        
-        # Remove secret options from main subgraph
+
+        -- Remove secret options from main subgraph
         subgraph.graph = strip_secret_options(subgraph.graph)
-        
-        return ExportSubGraphResponse(export=SubGraphExport(
-            subgraph=subgraph,
-            nested_subgraphs=nested_subgraphs
+
+        ExportSubGraphResponse.created(export: SubGraphExport.created(
+            subgraph: subgraph,
+            nested_subgraphs: nested_subgraphs
         ))
 }
 
-||-- ============================================================================
-||-- EXAMPLE ENDPOINTS (Read-only, from data/ directory)
-||-- ============================================================================
+-- ============================================================================
+-- EXAMPLE ENDPOINTS (Read-only, from data/ directory)
+-- ============================================================================
 
-||-- List example apps
-||-- GET /example/list
-||-- Returns: ListAppsResponse
+-- List example apps
+-- GET /example/list
+-- Returns: ListAppsResponse
 
 rule ExampleListExamples {
     when: GET /example/list
@@ -392,20 +392,20 @@ rule ExampleListExamples {
     ensures:
         example_dir = "data/example"
         files = list_directory(example_dir)
-        apps = []
+        apps = Set<RepositoryApp>
         for file in files:
             if file.endswith(".json"):
                 content = read_file(example_dir + "/" + file)
                 app = RepositoryApp.parse_json(content)
-                apps.append(app)
+                apps.add(app)
         sorted_apps = sort_by_created_at_desc(apps)
-        return ListAppsResponse(apps=sorted_apps)
+        ListAppsResponse.created(apps: sorted_apps)
 }
 
-||-- Get a specific example
-||-- GET /example/{id}
-||-- Returns: GetAppResponse
-||-- Errors: 404 if example not found
+-- Get a specific example
+-- GET /example/{id}
+-- Returns: GetAppResponse
+-- Errors: 404 if example not found
 
 rule ExampleGetExample {
     when: GET /example/{id}
@@ -415,18 +415,18 @@ rule ExampleGetExample {
         if file_exists(file_path):
             content = read_file(file_path)
             app = RepositoryApp.parse_json(content)
-            return GetAppResponse(app=app)
-        else:
-            return HTTPResponse(status=404, body={"status": "error", "message": "App not found"})
+            GetAppResponse.created(app: app)
+        if not file_exists(file_path):
+            HTTPResponse.created(status: 404)
 }
 
-||-- ============================================================================
-||-- PREMADE SUBGRAPH ENDPOINTS (Read-only, from data/ directory)
-||-- ============================================================================
+-- ============================================================================
+-- PREMADE SUBGRAPH ENDPOINTS (Read-only, from data/ directory)
+-- ============================================================================
 
-||-- List premade subgraphs
-||-- GET /premade_subgraph/list
-||-- Returns: ListSubgraphsResponse
+-- List premade subgraphs
+-- GET /premade_subgraph/list
+-- Returns: ListSubgraphsResponse
 
 rule PremadeSubgraphListPremadeSubgraphs {
     when: GET /premade_subgraph/list
@@ -434,20 +434,20 @@ rule PremadeSubgraphListPremadeSubgraphs {
     ensures:
         subgraph_dir = "data/sub_graph"
         files = list_directory(subgraph_dir)
-        subgraphs = []
+        subgraphs = Set<RepositorySubGraph>
         for file in files:
             if file.endswith(".json"):
                 content = read_file(subgraph_dir + "/" + file)
                 subgraph = RepositorySubGraph.parse_json(content)
-                subgraphs.append(subgraph)
+                subgraphs.add(subgraph)
         sorted_subgraphs = sort_by_created_at_desc(subgraphs)
-        return ListSubgraphsResponse(sub_graphs=sorted_subgraphs)
+        ListSubgraphsResponse.created(sub_graphs: sorted_subgraphs)
 }
 
-||-- Get a specific premade subgraph
-||-- GET /premade_subgraph/{id}
-||-- Returns: GetSubgraphResponse
-||-- Errors: 404 if subgraph not found
+-- Get a specific premade subgraph
+-- GET /premade_subgraph/{id}
+-- Returns: GetSubgraphResponse
+-- Errors: 404 if subgraph not found
 
 rule PremadeSubgraphGetPremadeSubgraph {
     when: GET /premade_subgraph/{id}
@@ -457,165 +457,165 @@ rule PremadeSubgraphGetPremadeSubgraph {
         if file_exists(file_path):
             content = read_file(file_path)
             subgraph = RepositorySubGraph.parse_json(content)
-            return GetSubgraphResponse(sub_graph=subgraph)
-        else:
-            return HTTPResponse(status=404, body={"status": "error", "message": "Subgraph not found"})
+            GetSubgraphResponse.created(sub_graph: subgraph)
+        if not file_exists(file_path):
+            HTTPResponse.created(status: 404)
 }
 
-||-- ============================================================================
-||-- APP EXECUTION ENDPOINTS
-||-- ============================================================================
+-- ============================================================================
+-- APP EXECUTION ENDPOINTS
+-- ============================================================================
 
-||-- Create a new app run (LiveKit room with agent dispatch)
-||-- POST /app/run
-||-- Body: CreateAppRunRequest
-||-- Returns: CreateAppRunResponse
+-- Create a new app run (LiveKit room with agent dispatch)
+-- POST /app/run
+-- Body: CreateAppRunRequest
+-- Returns: CreateAppRunResponse
 
 rule AppRun {
     when: POST /app/run with CreateAppRunRequest
 
     ensures:
-        # Create LiveKit room with agent dispatch
+        -- Create LiveKit room with agent dispatch
         room_name = request.run_id
-        
-        # Encode graph as base64 gzip for metadata
+
+        -- Encode graph as base64 gzip for metadata
         graph_json = request.graph.model_dump_json()
         compressed = gzip_compress(graph_json)
         metadata_b64 = base64_encode(compressed)
-        
-        # Create LiveKit room
+
+        -- Create LiveKit room
         room = livekit_api.create_room(
-            name=room_name,
-            agents=[
-                RoomAgentDispatch(
-                    agent_name="gabber-engine",
-                    metadata=metadata_b64
+            name: room_name,
+            agents: {
+                RoomAgentDispatch.created(
+                    agent_name: "gabber-engine",
+                    metadata: metadata_b64
                 )
-            ]
+            }
         )
-        
-        # Generate access token
+
+        -- Generate access token
         token = livekit_api.generate_token(
-            room=room_name,
-            grants=VideoGrants(
-                room_join=True,
-                can_publish=True,
-                can_subscribe=True
+            room: room_name,
+            grants: VideoGrants.created(
+                room_join: true,
+                can_publish: true,
+                can_subscribe: true
             ),
-            identity="human-" + short_uuid()
+            identity: "human-" + short_uuid()
         )
-        
-        return CreateAppRunResponse(
-            connection_details=AppRunConnectionDetails(
-                url=livekit_url,
-                token=token
+
+        CreateAppRunResponse.created(
+            connection_details: AppRunConnectionDetails.created(
+                url: livekit_url,
+                token: token
             )
         )
 }
 
-||-- Get debug connection details
-||-- POST /app/debug_connection
-||-- Body: DebugConnectionRequest
-||-- Returns: DebugConnectionResponse
+-- Get debug connection details
+-- POST /app/debug_connection
+-- Body: DebugConnectionRequest
+-- Returns: DebugConnectionResponse
 
 rule AppDebugConnection {
     when: POST /app/debug_connection with DebugConnectionRequest
 
     ensures:
-        # List room dispatches to find gabber-engine
-        dispatches = livekit_api.list_dispatch(room_name=request.run_id)
+        -- List room dispatches to find gabber-engine
+        dispatches = livekit_api.list_dispatch(room_name: request.run_id)
         dispatch = find_dispatch(dispatches, "gabber-engine")
-        
-        # Extract graph from dispatch metadata
+
+        -- Extract graph from dispatch metadata
         metadata = parse_json(dispatch.metadata)
-        graph = GraphEditorRepresentation.parse(metadata["graph"])
-        
-        # Generate debug token (read-only, can publish data)
+        graph = GraphEditorRepresentation.parse(metadata.graph)
+
+        -- Generate debug token (read-only, can publish data)
         token = livekit_api.generate_token(
-            room=request.run_id,
-            grants=VideoGrants(
-                room_join=True,
-                can_publish=False,
-                can_publish_data=True,
-                can_subscribe=True
+            room: request.run_id,
+            grants: VideoGrants.created(
+                room_join: true,
+                can_publish: false,
+                can_publish_data: true,
+                can_subscribe: true
             ),
-            identity="debug"
+            identity: "debug"
         )
-        
-        return DebugConnectionResponse(
-            connection_details=AppRunConnectionDetails(
-                url=livekit_url,
-                token=token
+
+        DebugConnectionResponse.created(
+            connection_details: AppRunConnectionDetails.created(
+                url: livekit_url,
+                token: token
             ),
-            graph=graph
+            graph: graph
         )
 }
 
-||-- Get MCP proxy connection details
-||-- POST /app/mcp_proxy_connection
-||-- Body: MCPProxyConnectionRequest
-||-- Returns: MCPProxyConnectionResponse
+-- Get MCP proxy connection details
+-- POST /app/mcp_proxy_connection
+-- Body: MCPProxyConnectionRequest
+-- Returns: MCPProxyConnectionResponse
 
 rule AppMCPProxyConnection {
     when: POST /app/mcp_proxy_connection with MCPProxyConnectionRequest
 
     ensures:
-        # Generate MCP proxy token (read-only, can publish data)
+        -- Generate MCP proxy token (read-only, can publish data)
         token = livekit_api.generate_token(
-            room=request.run_id,
-            grants=VideoGrants(
-                room_join=True,
-                can_publish=False,
-                can_publish_data=True,
-                can_subscribe=True
+            room: request.run_id,
+            grants: VideoGrants.created(
+                room_join: true,
+                can_publish: false,
+                can_publish_data: true,
+                can_subscribe: true
             ),
-            identity="mcp_proxy"
+            identity: "mcp_proxy"
         )
-        
-        return MCPProxyConnectionResponse(
-            connection_details=AppRunConnectionDetails(
-                url=livekit_url,
-                token=token
+
+        MCPProxyConnectionResponse.created(
+            connection_details: AppRunConnectionDetails.created(
+                url: livekit_url,
+                token: token
             )
         )
 }
 
-||-- ============================================================================
-||-- SECRET MANAGEMENT ENDPOINTS
-||-- ============================================================================
+-- ============================================================================
+-- SECRET MANAGEMENT ENDPOINTS
+-- ============================================================================
 
-||-- List all secret names
-||-- GET /secret/list
-||-- Returns: ListSecretsResponse
+-- List all secret names
+-- GET /secret/list
+-- Returns: ListSecretsResponse
 
 rule SecretListSecrets {
     when: GET /secret/list
 
     ensures:
         secrets = secret_provider.list_secrets()
-        return ListSecretsResponse(secrets=secrets)
+        ListSecretsResponse.created(secrets: secrets)
 }
 
-||-- Add a new secret
-||-- POST /secret
-||-- Body: AddSecretRequest
-||-- Returns: AddSecretResponse
+-- Add a new secret
+-- POST /secret
+-- Body: AddSecretRequest
+-- Returns: AddSecretResponse
 
 rule SecretAddSecret {
     when: POST /secret with AddSecretRequest
 
     ensures:
         secrets = secret_provider.read_secrets()
-        secrets[request.name] = request.value
+        secrets.put(request.name, request.value)
         secret_provider.write_secrets(secrets)
-        return AddSecretResponse(success=True)
+        AddSecretResponse.created(success: true)
 }
 
-||-- Update an existing secret
-||-- PUT /secret/{name}
-||-- Body: UpdateSecretRequest
-||-- Returns: UpdateSecretResponse
-||-- Errors: 404 if secret not found
+-- Update an existing secret
+-- PUT /secret/{name}
+-- Body: UpdateSecretRequest
+-- Returns: UpdateSecretResponse
+-- Errors: 404 if secret not found
 
 rule SecretUpdateSecret {
     when: PUT /secret/{name} with UpdateSecretRequest
@@ -623,17 +623,17 @@ rule SecretUpdateSecret {
     ensures:
         secrets = secret_provider.read_secrets()
         if name not in secrets:
-            return HTTPResponse(status=404, body={"status": "error", "message": "Secret not found"})
-        
-        secrets[name] = request.value
-        secret_provider.write_secrets(secrets)
-        return UpdateSecretResponse(success=True)
+            HTTPResponse.created(status: 404)
+        if name in secrets:
+            secrets.put(name, request.value)
+            secret_provider.write_secrets(secrets)
+            UpdateSecretResponse.created(success: true)
 }
 
-||-- Delete a secret
-||-- DELETE /secret/{name}
-||-- Returns: DeleteSecretResponse
-||-- Errors: 404 if secret not found
+-- Delete a secret
+-- DELETE /secret/{name}
+-- Returns: DeleteSecretResponse
+-- Errors: 404 if secret not found
 
 rule SecretDeleteSecret {
     when: DELETE /secret/{name}
@@ -641,290 +641,248 @@ rule SecretDeleteSecret {
     ensures:
         secrets = secret_provider.read_secrets()
         if name not in secrets:
-            return HTTPResponse(status=404, body={"status": "error", "message": "Secret not found"})
-        
-        del secrets[name]
-        secret_provider.write_secrets(secrets)
-        return DeleteSecretResponse(success=True)
+            HTTPResponse.created(status: 404)
+        if name in secrets:
+            secrets.remove(name)
+            secret_provider.write_secrets(secrets)
+            DeleteSecretResponse.created(success: true)
 }
 
-||-- ============================================================================
-||-- HELPER FUNCTIONS
-||-- ============================================================================
+-- ============================================================================
+-- HELPER FUNCTIONS
+-- ============================================================================
 
-||-- Import subgraph with ID conflict resolution
+-- Import subgraph with ID conflict resolution
+
 rule import_subgraph_with_id_conflict_resolution {
     input: RepositorySubGraph
     output: RepositorySubGraph
 
     ensures:
-        new_id = request.id
-        while file_exists(file_path + "/sub_graph/" + new_id + ".json"):
-            new_id = new_id + " duplicate"
-        
-        # Ensure unique name
-        existing_names = get_all_subgraph_names()
-        new_name = request.name
-        while new_name in existing_names:
-            new_name = new_name + " duplicate"
-        
-        return RepositorySubGraph(
-            id=new_id,
-            name=new_name,
-            graph=request.graph,
-            created_at=now(),
-            updated_at=now()
+        new_id = resolve_unique_id(request.id, subgraph_exists)
+        new_name = resolve_unique_name(request.name, get_all_subgraph_names())
+        RepositorySubGraph.created(
+            id: new_id,
+            name: new_name,
+            graph: request.graph,
+            created_at: now(),
+            updated_at: now()
         )
 }
 
-||-- Import app with ID conflict resolution
+-- Import app with ID conflict resolution
+
 rule import_app_with_id_conflict_resolution {
     input: RepositoryApp
     output: RepositoryApp
 
     ensures:
-        new_id = request.id
-        while file_exists(file_path + "/app/" + new_id + ".json"):
-            new_id = new_id + " duplicate"
-        
-        # Ensure unique name
-        existing_names = get_all_app_names()
-        new_name = request.name
-        while new_name in existing_names:
-            new_name = new_name + " duplicate"
-        
-        return RepositoryApp(
-            id=new_id,
-            name=new_name,
-            graph=request.graph,
-            created_at=now(),
-            updated_at=now()
+        new_id = resolve_unique_id(request.id, app_exists)
+        new_name = resolve_unique_name(request.name, get_all_app_names())
+        RepositoryApp.created(
+            id: new_id,
+            name: new_name,
+            graph: request.graph,
+            created_at: now(),
+            updated_at: now()
         )
 }
 
-||-- Extract subgraph IDs from a graph
+-- Extract subgraph IDs from a graph
+
 rule extract_subgraph_ids {
     input: GraphEditorRepresentation
     output: Set<String>
 
     ensures:
-        ids = set()
+        ids = Set<String>
         for node in graph.nodes:
-            if node.type == "SubGraph":
+            if node.type = "SubGraph":
                 id_pad = find_pad(node.pads, "__subgraph_id__")
-                if id_pad.value is String:
+                if id_pad.value.type = String:
                     ids.add(id_pad.value.value)
-        return ids
+        ids
 }
 
-||-- Extract all nested subgraph IDs recursively
+-- Extract all nested subgraph IDs recursively
+
 rule extract_all_nested_subgraph_ids {
     input: GraphEditorRepresentation
     output: Set<String>
 
     ensures:
-        ids = extract_subgraph_ids(graph)
-        processed = set()
-        nested = set()
-        
-        while ids is not empty:
-            sg_id = ids.pop()
-            if sg_id not in processed:
-                processed.add(sg_id)
-                sg = load_subgraph(sg_id)
-                if sg is not null:
-                    nested.add(sg_id)
-                    ids.update(extract_subgraph_ids(sg.graph))
-        
-        return nested
+        nested = collect_all_subgraph_ids(graph)
+        nested
 }
 
-||-- Update graph subgraph references using ID mapping
+-- Update graph subgraph references using ID mapping
+
 rule update_graph_subgraph_references {
     input: GraphEditorRepresentation, mapping: Map<String, String>
     output: GraphEditorRepresentation
 
     ensures:
-        graph_json = graph.model_dump_json()
-        for old_id, new_id in mapping.items():
-            graph_json = graph_json.replace('"' + old_id + '"', '"' + new_id + '"')
-        return GraphEditorRepresentation.parse_json(graph_json)
+        updated_graph = apply_id_mapping(graph, mapping)
+        updated_graph
 }
 
-||-- Strip secret options from graph pads
-rule strip_secret_options {
-    input: GraphEditorRepresentation
-    output: GraphEditorRepresentation
+-- ============================================================================
+-- REQUEST/RESPONSE SCHEMAS
+-- ============================================================================
 
-    ensures:
-        for node in graph.nodes:
-            for pad in node.pads:
-                for allowed_type in pad.allowed_types:
-                    if allowed_type.type == "secret":
-                        allowed_type.options = []
-                for default_allowed_type in pad.default_allowed_types:
-                    if default_allowed_type.type == "secret":
-                        default_allowed_type.options = []
-        return graph
-}
-
-||-- ============================================================================
-||-- REQUEST/RESPONSE SCHEMAS
-||-- ============================================================================
-
-||-- Request types
+-- Request types
 
 entity SaveSubgraphRequest {
-    type: Literal["save_subgraph"]
+    type: String
     id: String?                 -- Optional for updates
     name: String
     graph: GraphEditorRepresentation
 }
 
 entity SaveAppRequest {
-    type: Literal["save_app"]
+    type: String
     id: String?                 -- Optional for updates
     name: String
     graph: GraphEditorRepresentation
 }
 
 entity CreateAppRunRequest {
-    type: Literal["create_app_run"]
+    type: String
     run_id: String              -- Room name/ID
     graph: GraphEditorRepresentation
 }
 
 entity DebugConnectionRequest {
-    type: Literal["create_debug_connection"]
+    type: String
     run_id: String
 }
 
 entity MCPProxyConnectionRequest {
-    type: Literal["mcp_proxy_connection"]
+    type: String
     run_id: String
 }
 
 entity ImportAppRequest {
-    type: Literal["import_app"]
+    type: String
     export: AppExport
 }
 
 entity ImportSubGraphRequest {
-    type: Literal["import_subgraph"]
+    type: String
     export: SubGraphExport
 }
 
 entity AddSecretRequest {
-    type: Literal["add_secret"]
+    type: String
     name: String
     value: String
 }
 
 entity UpdateSecretRequest {
-    type: Literal["update_secret"]
+    type: String
     value: String
 }
 
-||-- Response types
+-- Response types
 
 entity GetAppResponse {
-    type: Literal["get_app"]
+    type: String
     app: RepositoryApp
 }
 
 entity SaveAppResponse {
-    type: Literal["save_app"]
+    type: String
     app: RepositoryApp
 }
 
 entity ListAppsResponse {
-    type: Literal["list_apps"]
+    type: String
     apps: List<RepositoryApp>
 }
 
 entity GetSubgraphResponse {
-    type: Literal["get_subgraph"]
+    type: String
     sub_graph: RepositorySubGraph
 }
 
 entity SaveSubgraphResponse {
-    type: Literal["save_subgraph"]
+    type: String
     sub_graph: RepositorySubGraph
 }
 
 entity ListSubgraphsResponse {
-    type: Literal["list_subgraphs"]
+    type: String
     sub_graphs: List<RepositorySubGraph>
 }
 
 entity CreateAppRunResponse {
-    type: Literal["create_app_run"]
+    type: String
     connection_details: AppRunConnectionDetails
 }
 
 entity DebugConnectionResponse {
-    type: Literal["debug_connection"]
+    type: String
     connection_details: AppRunConnectionDetails
     graph: GraphEditorRepresentation
 }
 
 entity MCPProxyConnectionResponse {
-    type: Literal["mcp_proxy_connection"]
+    type: String
     connection_details: AppRunConnectionDetails
 }
 
 entity ExportAppResponse {
-    type: Literal["export_app"]
+    type: String
     export: AppExport
 }
 
 entity ExportSubGraphResponse {
-    type: Literal["export_subgraph"]
+    type: String
     export: SubGraphExport
 }
 
 entity ListSecretsResponse {
-    type: Literal["list_secrets"]
+    type: String
     secrets: List<PublicSecret>
 }
 
 entity AddSecretResponse {
-    type: Literal["add_secret"]
+    type: String
     success: Boolean
 }
 
 entity UpdateSecretResponse {
-    type: Literal["update_secret"]
+    type: String
     success: Boolean
 }
 
 entity DeleteSecretResponse {
-    type: Literal["delete_secret"]
+    type: String
     success: Boolean
 }
 
-||-- ============================================================================
-||-- ERROR HANDLING
-||-- ============================================================================
+-- ============================================================================
+-- ERROR HANDLING
+-- ============================================================================
 
-||-- Standard error responses
+-- Standard error responses
 
 entity ErrorResponse {
-    status: Literal["error"]
+    status: String
     message: String
 }
 
-||-- HTTP Status Codes Used:
-||-- - 200: Success
-||-- - 400: Bad Request (invalid input)
-||-- - 404: Not Found (resource doesn't exist)
-||-- - 500: Internal Server Error
+-- HTTP Status Codes Used:
+-- - 200: Success
+-- - 400: Bad Request (invalid input)
+-- - 404: Not Found (resource doesn't exist)
+-- - 500: Internal Server Error
 
-||-- ============================================================================
-||-- SECURITY CONSIDERATIONS
-||-- ============================================================================
+-- ============================================================================
+-- SECURITY CONSIDERATIONS
+-- ============================================================================
 
-||-- Secrets are stripped from exported graphs to prevent credential leakage
-||-- All endpoints support CORS for frontend access
-||-- LiveKit tokens provide scoped access to specific rooms
-||-- Secret values are stored in a .secret file (should be gitignored)
+-- Secrets are stripped from exported graphs to prevent credential leakage
+-- All endpoints support CORS for frontend access
+-- LiveKit tokens provide scoped access to specific rooms
+-- Secret values are stored in a .secret file (should be gitignored)

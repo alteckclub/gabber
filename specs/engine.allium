@@ -113,11 +113,7 @@ entity Pad {
 }
 
 -- Three pad types with different semantics
-entity PadType = 
-    | StatelessSourcePad              -- Emits discrete values/events
-    | StatelessSinkPad                -- Receives discrete values/events
-    | PropertySourcePad               -- Holds a persistent value
-    | PropertySinkPad                 -- Accepts value updates
+enum PadType { StatelessSourcePad | StatelessSinkPad | PropertySourcePad | PropertySinkPad }
 
 -- Type constraints ensure compatible connections
 entity PadTypeConstraints {
@@ -125,19 +121,20 @@ entity PadTypeConstraints {
 }
 
 -- The type system for pad connections
-entity BasePadType =
-    | Trigger                         -- Event signal (no data)
-    | String
-    | Integer
-    | Float
-    | Boolean
-    | Object                          -- Generic structured data
-    | NodeReference                   -- Reference to another node
-    | Secret                          -- Reference to a secret value
-    | Audio                           -- Audio stream data
-    | Video                           -- Video stream data
-    | Enum                            -- Constrained string choice
-    | Viseme                          -- Lip-sync animation data
+enum BasePadType {
+    Trigger                           -- Event signal (no data)
+    String
+    Integer
+    Float
+    Boolean
+    Object                            -- Generic structured data
+    NodeReference                     -- Reference to another node
+    Secret                            -- Reference to a secret value
+    Audio                             -- Audio stream data
+    Video                             -- Video stream data
+    Enum                              -- Constrained string choice
+    Viseme                            -- Lip-sync animation data
+}
 
 -- ============================================================================
 -- RUNTIME DATA TYPES
@@ -145,28 +142,55 @@ entity BasePadType =
 
 -- Values that flow through pads during execution
 
-entity RuntimeValue =
-    | Trigger                         -- Event marker
-    | String
-    | Integer
-    | Float
-    | Boolean
-    | AudioClip                       -- Audio data with transcription
-    | AudioFrame                      -- Individual audio frame
-    | VideoClip                       -- Video data sequence
-    | VideoFrame                      -- Individual video frame
-    | AVClip                          -- Synchronized audio+video
-    | TextStream                      -- Streaming text output
-    | ContextMessage                  -- LLM conversation message
-    | ToolCall                        -- Function call request
-    | ToolDefinition                  -- Function definition for LLM
-    | Enum                            -- Constrained string value
-    | Viseme                          -- Lip-sync frame
-    | Secret                          -- Secret value reference
-    | NodeReference                   -- Node reference
-    | Point                           -- 2D coordinate
-    | BoundingBox                     -- Normalized rectangle
-    | Null
+entity RuntimeValue {
+    kind: Trigger | StringVal | IntegerVal | FloatVal | BooleanVal |
+          AudioClipVal | AudioFrameVal | VideoClipVal | VideoFrameVal |
+          AVClipVal | TextStreamVal | ContextMessageVal | ToolCallVal |
+          ToolDefinitionVal | EnumVal | VisemeVal | SecretVal |
+          NodeReferenceVal | PointVal | BoundingBoxVal | NullVal
+}
+
+variant Trigger : RuntimeValue { }
+
+variant StringVal : RuntimeValue { value: String }
+
+variant IntegerVal : RuntimeValue { value: Integer }
+
+variant FloatVal : RuntimeValue { value: Float }
+
+variant BooleanVal : RuntimeValue { value: Boolean }
+
+variant AudioClipVal : RuntimeValue { value: AudioClip }
+
+variant AudioFrameVal : RuntimeValue { value: AudioFrame }
+
+variant VideoClipVal : RuntimeValue { value: VideoClip }
+
+variant VideoFrameVal : RuntimeValue { value: VideoFrame }
+
+variant AVClipVal : RuntimeValue { value: AVClip }
+
+variant TextStreamVal : RuntimeValue { value: TextStream }
+
+variant ContextMessageVal : RuntimeValue { value: ContextMessage }
+
+variant ToolCallVal : RuntimeValue { value: ToolCall }
+
+variant ToolDefinitionVal : RuntimeValue { value: ToolDefinition }
+
+variant EnumVal : RuntimeValue { value: String }
+
+variant VisemeVal : RuntimeValue { value: Viseme }
+
+variant SecretVal : RuntimeValue { value: Secret }
+
+variant NodeReferenceVal : RuntimeValue { value: NodeReference }
+
+variant PointVal : RuntimeValue { value: Point }
+
+variant BoundingBoxVal : RuntimeValue { value: BoundingBox }
+
+variant NullVal : RuntimeValue { }
 
 -- Audio with optional speech transcription
 entity AudioClip {
@@ -220,13 +244,19 @@ entity ContextMessage {
     tool_call_id: String?
 }
 
-entity MessageRole = system | user | assistant | tool
+enum MessageRole { System | User | Assistant | Tool }
 
-entity ContentItem =
-    | TextContent
-    | AudioContent
-    | VideoContent
-    | ImageContent
+entity ContentValue {
+    kind: TextContentVal | AudioContentVal | VideoContentVal | ImageContentVal
+}
+
+variant TextContentVal : ContentValue { value: TextContent }
+
+variant AudioContentVal : ContentValue { value: AudioContent }
+
+variant VideoContentVal : ContentValue { value: VideoContent }
+
+variant ImageContentVal : ContentValue { value: ImageContent }
 
 entity TextContent { content: String }
 entity AudioContent { clip: AudioClip }
@@ -249,18 +279,16 @@ entity ToolDefinition {
     destination: ToolDestination
 }
 
-entity ToolDestination =
-    | Webhook                         -- Send to external service
-    | Client                          -- Send to frontend
+enum ToolDestination { Webhook | Client }
 
 -- Lip-sync animation data
 entity Viseme {
     value: VisemeType
 }
 
-entity VisemeType =
-    | SILENCE | PP | FF | TH | DD | kk | CH | SS | nn | RR
-    | aa | E | ih | oh | ou
+enum VisemeType {
+    SILENCE | PP | FF | TH | DD | kk | CH | SS | nn | RR | aa | E | ih | oh | ou
+}
 
 -- ============================================================================
 -- PAD CONNECTIONS AND DATA FLOW
@@ -277,7 +305,7 @@ rule ConnectPads {
     when: SourcePad.connect(target: SinkPad)
 
     requires: source_pad.can_connect(target)
-    
+
     ensures: PadConnection.created(
         source: source_pad,
         target: target
@@ -290,9 +318,9 @@ rule ConnectPads {
 rule PadTypeCompatibility {
     when: source_pad.can_connect(target: SinkPad)
 
-    requires: target.get_previous_pad() == null   -- Single input constraint
+    requires: target.get_previous_pad() = null   -- Single input constraint
 
-    ensures: 
+    ensures:
         intersection = INTERSECTION(
             source_pad.get_type_constraints(),
             target.get_type_constraints()
@@ -300,7 +328,7 @@ rule PadTypeCompatibility {
     ensures: intersection != empty
 
     -- Type constraints propagate through connected pads
-    ensures: 
+    ensures:
         for p in connected_pad_cluster(source_pad):
             p.set_type_constraints(intersection)
 }
@@ -309,9 +337,9 @@ rule PadTypeCompatibility {
 rule DataPropagation {
     when: source_pad.push_item(value: RuntimeValue, ctx: RequestContext)
 
-    requires: source_pad is SourcePad
+    requires: source_pad.type = SourcePad
 
-    ensures: 
+    ensures:
         for sink in source_pad.get_next_pads():
             sink._get_queue().put(
                 Item(value: value, ctx: new_context(ctx))
@@ -337,7 +365,7 @@ rule NodeLifecycle {
 rule NodeResolvePads {
     when: node.resolve_pads()
 
-    ensures: 
+    ensures:
         for pad in node.pads:
             pad.set_owner_node(node)
             pad._resolve_type_constraints()
@@ -350,10 +378,11 @@ rule NodeResolvePads {
 -- The StateMachine node provides finite state machine capability.
 -- This is a core node type that demonstrates how complex nodes are specified.
 
-entity StateMachineNode extends Node {
+entity StateMachineNode {
+    node: Node
     configuration: StateMachineConfiguration
-    current_state: Enum
-    previous_state: Enum
+    current_state: String
+    previous_state: String
     parameters: List<Parameter>
 }
 
@@ -382,22 +411,22 @@ entity Condition {
     value: Any?
 }
 
-entity ComparisonOperator =
-    | "<" | "<=" | "==" | "!=" | ">=" | ">"
-    | "NON_EMPTY" | "EMPTY"
-    | "STARTS_WITH" | "ENDS_WITH" | "CONTAINS"
-    | "TRUE" | "FALSE"
+enum ComparisonOperator {
+    LT | LE | EQ | NE | GE | GT |
+    NON_EMPTY | EMPTY |
+    STARTS_WITH | ENDS_WITH | CONTAINS |
+    TRUE | FALSE
+}
 
 rule StateMachineTransition {
     when: StateMachineNode.check_transitions(ctx, from_state, current_state)
 
-    requires: 
+    requires:
         transition = StateMachineNode.transitions.find(
-            t => t.from_state == from_state
-                 && conditions_met(t.conditions, parameters)
+            t where t.from_state = from_state and conditions_met(t.conditions, parameters)
         )
 
-    ensures: 
+    ensures:
         StateMachineNode.previous_state = current_state
         StateMachineNode.current_state = transition.to_state
         previous_state_pad.push_item(current_state, ctx)
@@ -410,21 +439,25 @@ rule StateMachineTransition {
 
 -- Sub-graphs enable graph reuse and hierarchical composition
 
-entity SubGraphNode extends Node {
+entity SubGraphNode {
+    node: Node
     sub_graph: Graph
     sub_graph_id: String
 }
 
 -- Portal pads expose internal graph structure
-entity ProxyPropertySink extends PropertySinkPad {
+entity ProxyPropertySink {
+    pad: PropertySinkPad
     target_pad: Pad           -- Pad inside sub-graph
 }
 
-entity ProxyPropertySource extends PropertySourcePad {
+entity ProxyPropertySource {
+    pad: PropertySourcePad
     target_pad: Pad
 }
 
-entity ProxyStatelessSink extends StatelessSinkPad {
+entity ProxyStatelessSink {
+    pad: StatelessSinkPad
     target_pad: Pad
 }
 
@@ -453,7 +486,7 @@ entity PublicSecret {
 rule TypeConstraintIntersection {
     when: pads = connected_pad_cluster(pad)
 
-    ensures: 
+    ensures:
         intersection = pad.get_default_type_constraints()
         for p in pads:
             intersection = INTERSECTION(intersection, p.get_default_type_constraints())
@@ -477,7 +510,7 @@ entity RequestContext {
 rule RequestContextPropagation {
     when: source_pad.push_item(value, ctx)
 
-    ensures: 
+    ensures:
         new_ctx = RequestContext(
             parent: ctx,
             timeout: ctx._timeout_s,
@@ -497,19 +530,19 @@ rule RequestContextPropagation {
 rule LoadGraphFromSnapshot {
     when: Graph.load(snapshot: GraphEditorRepresentation)
 
-    ensures: 
+    ensures:
         for node_data in snapshot.nodes:
             node = Node.create(
                 type: node_data.type,
                 configuration: node_data.pads
             )
             Graph.nodes.add(node)
-    
-    ensures: 
+
+    ensures:
         for link in snapshot.pad_links:
             source_pad.connect(target_pad)
-    
-    ensures: 
+
+    ensures:
         for portal in snapshot.portals:
             Graph.portals.add(portal)
 }
@@ -517,18 +550,18 @@ rule LoadGraphFromSnapshot {
 rule EditGraph {
     when: Graph.apply_edit(edit: GraphEdit)
 
-    ensures: 
-        if edit.type == INSERT_NODE:
-            Node.create(edits.node_type)
-        if edit.type == REMOVE_NODE:
+    ensures:
+        if edit.type = INSERT_NODE:
+            Node.create(edit.node_type)
+        if edit.type = REMOVE_NODE:
             Node.delete(edit.node_id)
-        if edit.type == CONNECT_PAD:
+        if edit.type = CONNECT_PAD:
             SourcePad.connect(SinkPad)
-        if edit.type == DISCONNECT_PAD:
+        if edit.type = DISCONNECT_PAD:
             Pad.disconnect()
-        if edit.type == UPDATE_NODE:
+        if edit.type = UPDATE_NODE:
             Node.update(edit)
-        if edit.type == UPDATE_PAD:
+        if edit.type = UPDATE_PAD:
             Pad.update(edit)
 }
 
@@ -541,13 +574,13 @@ rule EditGraph {
 rule QueryEligibleNodes {
     when: Graph.query_eligible_nodes(source_pad: Pad)
 
-    requires: source_pad is SourcePad
+    requires: source_pad.type = SourcePad
 
-    ensures: 
-        eligible = [
-            item for item in library_items
-            for pad in item.pads
-            if source_pad.can_connect(pad) and pad is SinkPad
-        ]
+    ensures:
+        eligible = Set<LibraryItem>
+        for item in library_items:
+            for pad in item.pads:
+                if source_pad.can_connect(pad) and pad.type = SinkPad:
+                    eligible.add(item)
     ensures: EligibleNodesResponse(eligible_items: eligible)
 }

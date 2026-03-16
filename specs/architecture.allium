@@ -1,0 +1,397 @@
+-- allium: 2
+-- architecture.allium
+
+-- Scope: Gabber system architecture - all services and components
+-- Includes: Frontend, Editor, Engine, Repository, LiveKit, MCP Proxy Client
+-- Excludes:
+--   - Individual node implementations (separate node specs)
+--   - SDK implementations (separate SDK specs)
+--   - External service integrations (OpenAI, etc.)
+
+-- ============================================================================
+-- CORE DOMAIN ENTITIES
+-- ============================================================================
+
+-- An App is the highest level construct in Gabber - a graph of nodes and pads
+entity App {
+    id: String
+    name: String
+    description: String?
+    graph: Graph
+    created_at: Timestamp
+    updated_at: Timestamp
+    owner: User?
+
+    -- Apps can be shared publicly or kept private
+    visibility: public | private
+}
+
+-- A SubGraph is an embeddable collection of nodes, similar to App but designed
+-- to be used as a node within other graphs
+entity SubGraph {
+    id: String
+    name: String
+    description: String?
+    graph: Graph
+    created_at: Timestamp
+    updated_at: Timestamp
+    author: User?
+
+    -- Proxy nodes define entry/exit points for embedding
+    proxy_inputs: List<ProxyNode>
+    proxy_outputs: List<ProxyNode>
+
+    visibility: public | private
+}
+
+-- Graph is the structural container for nodes and their connections
+entity Graph {
+    id: String
+    nodes: Set<Node>
+    connections: Set<Connection>
+
+    -- State machines can be embedded within graphs
+    state_machines: Set<StateMachine>
+}
+
+-- Node is a functional building block that performs specific operations
+entity Node {
+    id: String
+    type: NodeType
+    label: String?
+    position: GraphPosition
+
+    -- Nodes have typed pads for data flow
+    input_pads: Set<Pad>
+    output_pads: Set<Pad>
+
+    -- Configurable properties affect node behavior
+    properties: Map<String, PropertyValue>
+
+    state: NodeState
+}
+
+entity NodeState {
+    active: Boolean
+    error_message: String?
+    last_run_at: Timestamp?
+}
+
+entity Pad {
+    id: String
+    name: String
+    type: PadType
+    mode: property | stateless
+    direction: sink | source
+}
+
+-- Connection links pads between nodes
+entity Connection {
+    id: String
+    source_node: Node
+    source_pad: Pad
+    target_node: Node
+    target_pad: Pad
+}
+
+-- NodeType categorizes nodes by their function
+entity NodeType {
+    -- Media ingestion nodes
+    media_source: MediaSourceType?
+
+    -- Processing nodes
+    transcriber: TranscriberType?
+    analyzer: AnalyzerType?
+    processor: ProcessorType?
+
+    -- Output nodes
+    speaker: SpeakerType?
+    action: ActionType?
+
+    -- Control nodes
+    state_machine: StateMachineType?
+    conditional: ConditionalType?
+
+    -- Integration nodes
+    api_call: ApiCallType?
+    llm: LlmType?
+    mcp_server: McpServerType?
+}
+
+-- StateMachine defines control flow through states and transitions
+entity StateMachine {
+    id: String
+    name: String
+    initial_state: State
+
+    states: Set<State>
+    transitions: Set<Transition>
+    parameters: Set<Parameter>
+}
+
+entity State {
+    id: String
+    name: String
+    entry_actions: List<Action>
+    exit_actions: List<Action>
+}
+
+entity Transition {
+    id: String
+    source_state: State
+    target_state: State
+    condition: Expression
+    actions: List<Action>
+}
+
+entity Parameter {
+    id: String
+    name: String
+    type: ParameterType
+}
+
+-- ============================================================================
+-- SERVICE ARCHITECTURE
+-- ============================================================================
+
+-- FrontendService is the NextJS web UI for building and running apps
+entity FrontendService {
+    port: Integer = 3000
+    service_type: web_application
+    framework: nextjs
+
+    -- Communicates with backend services
+    depends_on: Set<Service>
+
+    -- Environment configuration
+    repository_url: String
+    editor_ws_url: String
+    livekit_url: String
+}
+
+-- EditorService is the backend server for the frontend UI
+entity EditorService {
+    port: Integer = 8000
+    service_type: websocket_server
+    protocol: websocket
+
+    -- Handles real-time graph editing
+    provides_graph_editing: Boolean = true
+    provides_realtime_collaboration: Boolean = true
+    provides_user_session_management: Boolean = true
+
+    -- Shared storage with other services
+    shares_gabber_directory: Boolean = true
+    shares_secrets_directory: Boolean = true
+}
+
+-- EngineService is the runtime responsible for executing apps
+entity EngineService {
+    service_type: execution_engine
+    protocol: websocket
+
+    depends_on: Set<Service>
+
+    -- Handles app execution and media streaming
+    provides_graph_execution: Boolean = true
+    provides_node_runtime: Boolean = true
+    provides_media_stream_processing: Boolean = true
+    provides_state_machine_execution: Boolean = true
+
+    -- External integrations
+    livekit_url: String
+    local_llm_host: String?
+    kitten_tts_host: String?
+
+    shares_gabber_directory: Boolean = true
+    shares_secrets_directory: Boolean = true
+}
+
+-- RepositoryService is a thin HTTP server for fetching/saving apps
+entity RepositoryService {
+    port: Integer = 8001
+    service_type: http_server
+    protocol: http
+
+    -- Manages app and subgraph persistence
+    provides_app_crud: Boolean = true
+    provides_subgraph_crud: Boolean = true
+    provides_asset_serving: Boolean = true
+
+    livekit_url: String
+    public_host: String
+
+    shares_gabber_directory: Boolean = true
+    shares_secrets_directory: Boolean = true
+}
+
+-- LiveKitService is a WebRTC server for media streaming
+entity LiveKitService {
+    ws_port: Integer = 7880
+    http_port: Integer = 7881
+    udp_port: Integer = 7882
+
+    service_type: webrtc_server
+    image: String = "livekit/livekit-server:latest"
+
+    -- Handles real-time media for voice/video
+    provides_media_ingestion: Boolean = true
+    provides_media_distribution: Boolean = true
+    provides_room_management: Boolean = true
+    provides_participant_management: Boolean = true
+
+    log_level: String
+}
+
+-- McpProxyClient proxies MCP traffic between Engine and MCP Servers
+entity McpProxyClient {
+    service_type: proxy_client
+    protocol: mcp
+
+    -- Connects to running Gabber sessions
+    provides_mcp_discovery: Boolean = true
+    provides_traffic_proxying: Boolean = true
+    provides_session_management: Boolean = true
+
+    mcp_config_file: String  -- mcp.yaml
+}
+
+-- ============================================================================
+-- EXTERNAL SERVICES (Optional/Configurable)
+-- ============================================================================
+
+-- KittenTTSService provides text-to-speech capabilities
+entity KittenTTSService {
+    port: Integer = 7003
+    service_type: audio_service
+    audio_format: String = "l16;rate=24000"
+
+    provides_text_to_speech: Boolean = true
+    provides_audio_streaming: Boolean = true
+}
+
+-- LocalLLMService provides local LLM inference
+entity LocalLLMService {
+    service_type: llm_service
+    implementation: llama.cpp | vllm
+
+    provides_llm_inference: Boolean = true
+    provides_model_serving: Boolean = true
+
+    -- Requires external setup
+    requires_llama_cpp: Boolean = false
+    requires_vllm: Boolean = false
+}
+
+-- ============================================================================
+-- SYSTEM INTEGRATIONS
+-- ============================================================================
+
+-- Integration defines how services communicate
+entity FrontendToEditorIntegration {
+    source: FrontendService
+    target: EditorService
+    protocol: websocket
+    endpoint: String = "/ws"
+
+    purpose: String = "Real-time graph editing and collaboration"
+}
+
+entity FrontendToRepositoryIntegration {
+    source: FrontendService
+    target: RepositoryService
+    protocol: http
+    endpoint: String = "/apps, /subgraphs"
+
+    purpose: String = "Fetch and save app/subgraph data"
+}
+
+entity EngineToLiveKitIntegration {
+    source: EngineService
+    target: LiveKitService
+    protocol: websocket
+    endpoint: String = "ws://livekit:7880"
+
+    purpose: String = "Media stream ingestion and distribution"
+}
+
+entity McpProxyToEngineIntegration {
+    source: McpProxyClient
+    target: EngineService
+    protocol: mcp
+    requires_run_id: Boolean = true
+
+    purpose: String = "Proxy MCP traffic to/from MCP servers"
+}
+
+-- ============================================================================
+-- DEPLOYMENT ARCHITECTURE
+-- ============================================================================
+
+-- DeploymentMode defines how the system is run
+entity DeploymentMode {
+    mode: docker_compose | makefile
+}
+
+-- SharedStorage represents the common data directory
+entity GabberDirectory {
+    path: String = "/.gabber"
+    storage_type: filesystem
+
+    -- Accessed by multiple services
+    accessed_by: Set<Service>
+}
+
+-- SecretsStorage holds sensitive configuration
+entity SecretsDirectory {
+    path: String = "/.secret"
+    storage_type: filesystem
+
+    -- Accessed by multiple services
+    accessed_by: Set<Service>
+}
+
+-- ============================================================================
+-- ARCHITECTURE INVARIANTS
+-- ============================================================================
+
+invariant ServicePortsUnique {
+    -- Each service must have unique port assignments
+    for s in {FrontendService, EditorService, RepositoryService, LiveKitService}:
+        for t in {FrontendService, EditorService, RepositoryService, LiveKitService} where t != s:
+            s.port != t.port
+}
+
+invariant StorageAccessConsistent {
+    -- All services accessing shared storage must use the same paths
+    for s in GabberDirectory.accessed_by:
+        s.shares_gabber_directory = true
+}
+
+invariant DependencyGraphAcyclic {
+    -- Service dependencies should not form cycles
+    -- Frontend depends on Editor, Repository, Engine, LiveKit
+    -- Engine depends on LiveKit
+    -- Editor, Repository, Engine share storage but don't depend on each other
+    for s1 in Service:
+        for s2 in Service where s1 != s2:
+            not (s2 in s1.depends_on and s1 in s2.depends_on)
+}
+
+-- ============================================================================
+-- CONFIGURATION
+-- ============================================================================
+
+config {
+    -- Default ports
+    frontend_port: Integer = 3000
+    editor_port: Integer = 8000
+    repository_port: Integer = 8001
+    livekit_ws_port: Integer = 7880
+    livekit_http_port: Integer = 7881
+    livekit_udp_port: Integer = 7882
+
+    -- Default hosts
+    localhost: String = "localhost"
+    webrtc_protocol: String = "ws"
+}

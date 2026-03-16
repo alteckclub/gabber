@@ -1,0 +1,400 @@
+-- allium: 2
+
+-- Gabber Services Specification
+-- Distilled from services/gabber-stt/ and services/kitten-tts/ implementation
+--
+-- Scope: Real-time audio processing microservices
+-- Includes: STT service, TTS service, WebSocket protocol, audio inference pipeline
+-- Excludes:
+--   - Engine graph execution (see engine.allium)
+--   - Frontend-Engine communication (see editor service spec)
+--   - Repository service
+
+-- ============================================================================
+-- SERVICES ARCHITECTURE
+-- ============================================================================
+
+-- The Gabber services layer provides real-time audio processing capabilities
+-- via independent microservices. The main service is gabber-stt which
+-- orchestrates VAD, EOT, STT, and LipSync inference engines.
+
+entity Service {
+    name: String
+    port: Integer
+    protocol: WebSocket | HTTP
+    sample_rate: Integer
+}
+
+-- ============================================================================
+-- GABBER-STT SERVICE
+-- ============================================================================
+
+-- The gabber-stt service is a WebSocket server that processes audio streams
+-- in real-time, detecting speech, transcribing, and optionally generating
+-- lip-sync visemes.
+
+entity GabberSTTService {
+    service: Service
+    port: 8080
+    protocol: WebSocket
+    input_sample_rate: Integer    -- From client (e.g., 16000, 48000)
+}
+
+-- ============================================================================
+-- WEBSOCKET PROTOCOL
+-- ============================================================================
+
+-- Client-to-Server Messages
+
+entity RequestPayload_StartSession {
+    type: String
+    sample_rate: Integer
+    stt_enabled: Boolean = True
+    lipsync_enabled: Boolean = False
+}
+
+entity RequestPayload_AudioData {
+    type: String
+    b64_data: String              -- Base64-encoded int16 PCM audio
+}
+
+entity RequestPayload_EndSession {
+    type: String
+}
+
+entity Request {
+    payload: RequestPayload_StartSession | RequestPayload_AudioData | RequestPayload_EndSession
+    session_id: String
+}
+
+-- Server-to-Client Messages
+
+entity ResponsePayload_Error {
+    type: String
+    message: String
+}
+
+entity ResponsePayload_InterimTranscription {
+    type: String
+    trans_id: Integer
+    start_sample: Integer
+    end_sample: Integer
+    transcription: String
+}
+
+entity ResponsePayload_FinalTranscription {
+    type: String
+    trans_id: Integer
+    transcription: String
+    start_sample: Integer
+    end_sample: Integer
+}
+
+entity ResponsePayload_SpeakingStarted {
+    type: String
+    trans_id: Integer
+    start_sample: Integer
+}
+
+entity ResponsePayload_LipSyncViseme {
+    type: String
+    viseme: String
+    probability: Float
+    start_sample: Integer
+    end_sample: Integer
+}
+
+entity Response {
+    payload: ResponsePayload_Error | ResponsePayload_InterimTranscription | ResponsePayload_FinalTranscription | ResponsePayload_SpeakingStarted | ResponsePayload_LipSyncViseme
+    session_id: String
+}
+
+-- ============================================================================
+-- ENGINE COMPOSITION
+-- ============================================================================
+
+-- The STT service composes four inference engines:
+
+entity Engine {
+    input_sample_rate: Integer
+    eot: EndOfTurnEngine
+    vad: VADInferenceEngine
+    stt: STTInferenceEngine
+    lipsync: LipSyncInferenceEngine
+    settings: EngineSettings
+    audio_window: AudioWindow
+    stt_state: BaseSTTState
+    lipsync_state: BaseLipSyncState
+}
+
+entity EngineSettings {
+    initial_vad_threshold: Float = 0.5
+    vad_sustained_threshold: Float = 0.25
+    speaking_started_warmup_time_s: Float = 0.1
+    vad_cooldown_time_s: Float = 0.5
+    eot_timeout_s: Float = 1.5
+    lipsync_delay_s: Float = 0.25
+    lipsync_enabled: Boolean = False
+    stt_enabled: Boolean = True
+}
+
+-- ============================================================================
+-- AUDIO WINDOW
+-- ============================================================================
+
+-- The AudioWindow manages a sliding buffer of audio at multiple sample rates.
+-- It enables efficient access to audio segments at different rates for
+-- different inference engines.
+
+entity AudioWindow {
+    max_length_s: Float = 60.0
+    sample_rates: List<Integer>
+    input_sample_rate: Integer
+    _end_cursors: Map<Integer, Integer>
+}
+
+-- ============================================================================
+-- VAD (VOICE ACTIVITY DETECTION)
+-- ============================================================================
+
+-- VAD detects when speech starts and ends using the Silero model.
+
+entity VADInferenceEngine {
+    engine: AudioInferenceEngine
+    inference_impl: VADInference
+    sample_rate: 16000
+}
+
+entity SileroVADInference {
+    model: SileroVADModel
+    sample_rate: 16000
+    full_audio_size: 512              -- 32ms @ 16kHz
+    new_audio_size: 448               -- 512 - 64 context
+    context_size: 64
+}
+
+-- ============================================================================
+-- EOT (END OF TURN)
+-- ============================================================================
+
+-- EOT detects when a speaker has finished their turn (pause indicating
+-- the end of speech). Uses the SmartTurn v3.0 model.
+
+entity EndOfTurnEngine {
+    engine: AudioInferenceEngine
+    inference_impl: EOTInference
+    sample_rate: 16000
+}
+
+entity PipeCatEOTInference {
+    model: SmartTurnV3ONNX
+    sample_rate: 16000
+    chunk_length_secs: 8
+    full_audio_size: 128000           -- 8s @ 16kHz
+    new_audio_size: 4000              -- 250ms @ 16kHz
+}
+
+-- ============================================================================
+-- STT (SPEECH-TO-TEXT)
+-- ============================================================================
+
+-- STT transcribes speech to text using the Parakeet RNNT model.
+
+entity STTInferenceEngine {
+    engine: AudioInferenceEngine
+    inference_impl: STTInference
+    sample_rate: 16000
+}
+
+entity ParakeetSTTInference {
+    model: ParakeetRNNT
+    sample_rate: 16000
+    window_secs: 120.0
+    chunk_secs: 0.280
+    encoder_frame_2_audio_samples: Integer  -- From model config
+}
+
+entity STTInferenceResult {
+    transcription: String
+    start_cursor: Integer
+    end_cursor: Integer
+    words: List<STTInferenceResultWord>
+}
+
+entity STTInferenceResultWord {
+    word: String
+    start_cursor: Integer
+    end_cursor: Integer
+}
+
+-- ============================================================================
+-- LIPSYNC (VISEME GENERATION)
+-- ============================================================================
+
+-- LipSync generates viseme (lip animation) data from audio.
+
+entity LipSyncInferenceEngine {
+    engine: AudioInferenceEngine
+    inference_impl: LipSyncInference
+    sample_rate: Integer
+}
+
+entity OpenLipSyncInference {
+    sample_rate: Integer
+}
+
+enum Viseme {
+    SILENCE | PP | FF | TH | DD | KK | CH | SS | NN | RR | AA | E | IH | OH | OU
+}
+
+entity LipSyncResult {
+    max_viseme_prob: VisemeProbability
+    start_sample: Integer
+    end_sample: Integer
+}
+
+entity VisemeProbability {
+    viseme: Viseme
+    probability: Float
+}
+
+-- ============================================================================
+-- AUDIO INFERENCE BATCHING
+-- ============================================================================
+
+-- Inference engines batch audio for efficient GPU utilization.
+
+entity AudioInferenceEngine {
+    inference_impl: AudioInference
+    batch_size: Integer = 32
+    batch_timeout_ms: Float = 10.0
+    batcher: AudioInferenceBatcher
+}
+
+entity AudioInferenceBatcher {
+    inference_impl: AudioInference
+    batch_size: Integer
+    batch_timeout: Float
+    _batch: Queue<AudioInferenceBatcherPromise>
+    _run_thread: Thread
+}
+
+entity AudioInferenceBatcherPromise {
+    audio: AudioFrame
+    prev_state: Any?
+    num_samples: Integer
+    fut: Future<AudioInferenceInternalResult>
+}
+
+-- ============================================================================
+-- STT STATE MACHINE
+-- ============================================================================
+
+-- The engine uses a state machine to manage speech detection and transcription.
+
+entity BaseSTTState {
+    engine: Engine
+    state: Any
+    name: String
+}
+
+entity NotTalkingState {
+    vad_cursor: Integer
+    trans_id: Integer
+}
+
+entity TalkingWarmUpState {
+    vad_cursor: Integer
+    start_talking: Integer
+    latest_voice: Integer
+    trans_id: Integer
+}
+
+entity STTTalkingState {
+    trans_id: Integer
+    start_talking: Integer
+    stt_cursor: Integer
+    vad_cursor: Integer
+    latest_voice: Integer
+    current_transcription: String
+}
+
+entity FinalizingState {
+    trans_id: Integer
+    current_transcription: String
+    start_talking: Integer
+    end_talking: Integer
+}
+
+-- ============================================================================
+-- EVENTS
+-- ============================================================================
+
+entity STTEvent_SpeakingStarted {
+    trans_id: Integer
+    start_sample: Integer
+}
+
+entity STTEvent_InterimTranscription {
+    trans_id: Integer
+    start_sample: Integer
+    end_sample: Integer
+    transcription: String
+}
+
+entity STTEvent_FinalTranscription {
+    trans_id: Integer
+    transcription: String
+    start_sample: Integer
+    end_sample: Integer
+}
+
+entity LipSyncEvent_Viseme {
+    viseme: Viseme
+    probability: Float
+    start_sample: Integer
+    end_sample: Integer
+}
+
+-- ============================================================================
+-- KITTEN-TTS SERVICE
+-- ============================================================================
+
+-- The kitten-tts service is an HTTP server that generates audio from text.
+
+entity KittenTTSService {
+    service: Service
+    port: 7003
+    protocol: HTTP
+    sample_rate: 24000
+}
+
+entity TTSRequest {
+    text: String
+    voice: String
+}
+
+entity KittenTTSModel {
+    name: String = "KittenML/kitten-tts-nano-0.1"
+    sample_rate: 24000
+}
+
+-- ============================================================================
+-- AUDIO DATA FORMATS
+-- ============================================================================
+
+-- Audio is transmitted as 16-bit linear PCM (int16).
+
+entity AudioDataFormat {
+    format: String
+    channels: Integer = 1
+    sample_rate: Integer
+}
+
+-- Sample rates used in the system:
+-- - Client input: Variable (e.g., 16000, 48000)
+-- - VAD: 16000 Hz
+-- - STT: 16000 Hz  
+-- - EOT: 16000 Hz
+-- - LipSync: Variable (model-dependent)
+-- - TTS output: 24000 Hz
