@@ -1,0 +1,386 @@
+-- allium: 2
+
+-- Gabber Editor Service WebSocket Protocol Specification
+-- Distilled from engine/gabber/core/editor/ implementation
+--
+-- Scope: WebSocket communication protocol for the visual graph editor
+-- Includes: Message types, graph serialization, edit operations, collaboration semantics
+-- Excludes:
+--   - Visual editor UI implementation
+--   - Node type definitions (see engine.allium)
+--   - Transport layer details (WebSocket framing, TLS)
+
+-- ============================================================================
+-- OVERVIEW
+-- ============================================================================
+
+-- The Editor Service provides a WebSocket-based protocol for real-time graph
+-- editing and collaboration. Clients connect to edit graphs, query the node
+-- library, and receive updates from concurrent editors.
+
+-- The protocol is request-response based with each message containing a unique
+-- request ID for correlation. All messages are JSON-serialized Pydantic models.
+
+-- ============================================================================
+-- MESSAGE PROTOCOL
+-- ============================================================================
+
+-- The protocol uses a discriminated union of request and response types.
+-- Each message has a type discriminator and a request ID for correlation.
+
+entity Request {
+    kind: String              -- Request type discriminator
+}
+
+variant GetNodeLibraryRequest : Request {
+    req_id: String
+    filter: String?
+    include_metadata: Boolean
+}
+
+variant QueryEligibleNodeLibraryItemsRequest : Request {
+    req_id: String
+    source_node: String
+    source_pad: String
+}
+
+variant LoadFromSnapshotRequest : Request {
+    req_id: String
+    graph: GraphEditorRepresentation
+}
+
+variant EditRequest : Request {
+    req_id: String
+    edits: Set<Edit>
+}
+
+
+entity Response {
+    kind: String              -- Response type discriminator
+}
+variant NodeLibraryResponse : Response {
+    req_id: String
+    node_library: Set<GraphLibraryItem>
+}
+
+variant QueryEligibleNodeLibraryItemsResponse : Response {
+    req_id: String
+    direct_eligible_items: Set<EligibleLibraryItem>
+    autoconvert_eligible_items: Set<GraphLibraryItem>
+}
+
+variant LoadFromSnapshotResponse : Response {
+    req_id: String
+    graph: GraphEditorRepresentation
+}
+
+variant EditResponse : Response {
+    req_id: String
+    graph: GraphEditorRepresentation
+}
+
+-- ============================================================================
+-- GRAPH SERIALIZATION FORMAT
+-- ============================================================================
+
+-- The GraphEditorRepresentation is the serialized form of a graph for
+-- transmission over WebSocket. It contains all nodes and their editor state.
+
+entity GraphEditorRepresentation {
+    nodes: Set<NodeEditorRepresentation>
+    portals: Set<Portal>
+}
+
+-- A node with its editor-specific representation
+entity NodeEditorRepresentation {
+    id: String
+    type: String
+    editor_name: String
+    editor_position: Point
+    editor_dimensions: Point?
+    pads: Set<PadEditorRepresentation>
+    description: String?
+    metadata: NodeMetadata
+    notes: Set<NodeNote>?
+}
+
+-- Editor representation for a pad (connection point)
+entity PadEditorRepresentation {
+    id: String
+    group: String
+    type: String
+    default_allowed_types: Set<PadConstraint>?
+    allowed_types: Set<PadConstraint>?
+    value: ClientPadValue?
+    next_pads: Set<PadReference>
+    previous_pad: PadReference?
+    pad_links: Set<String>
+}
+
+-- Reference to a pad on a specific node
+entity PadReference {
+    node: String
+    pad: String
+}
+
+-- ============================================================================
+-- EDIT OPERATIONS
+-- ============================================================================
+
+-- Edit operations modify the graph structure. Multiple edits are batched
+-- in a single request and applied atomically.
+
+entity Edit {
+    kind: String              -- Client pad value type discriminator
+}
+
+variant InsertNodeEdit : Edit {
+    id: String?
+    node_type: String
+    editor_position: Point
+    editor_dimensions: Point?
+    editor_name: String
+}
+
+variant InsertSubGraphEdit : Edit {
+    id: String?
+    subgraph_id: String
+    editor_position: Point
+    editor_dimensions: Point?
+    editor_name: String
+}
+
+variant RemoveNodeEdit : Edit {
+    node_id: String
+}
+
+variant UpdateNodeEdit : Edit {
+    id: String
+    editor_position: Point?
+    editor_dimensions: Point?
+    editor_name: String?
+    new_id: String?
+}
+
+variant ConnectPadEdit : Edit {
+    node: String
+    pad: String
+    connected_node: String
+    connected_pad: String
+}
+
+variant DisconnectPadEdit : Edit {
+    node: String
+    pad: String
+    connected_node: String
+    connected_pad: String
+}
+
+variant UpdatePadEdit : Edit {
+    node: String
+    pad: String
+    value: ClientPadValue
+}
+
+variant CreatePortalEdit : Edit {
+    source_node: String
+    source_pad: String
+    editor_position: Point
+}
+
+variant CreatePortalEndEdit : Edit {
+    portal_id: String
+    editor_position: Point
+}
+
+variant UpdatePortalEdit : Edit {
+    portal_id: String
+    editor_position: Point
+}
+
+variant UpdatePortalEndEdit : Edit {
+    portal_id: String
+    portal_end_id: String
+    editor_position: Point
+    next_pads: Set<PadReference>
+}
+
+variant DeletePortalEdit : Edit {
+    portal_id: String
+}
+
+variant DeletePortalEndEdit : Edit {
+    portal_id: String
+    portal_end_id: String
+}
+
+
+-- ============================================================================
+-- LIBRARY ITEM TYPES
+-- ============================================================================
+
+-- Items available in the node library
+entity GraphLibraryItem {
+    kind: LibraryItemKind
+}
+
+variant GraphLibraryItem_Node : GraphLibraryItem {
+    name: String
+    node_type: Any
+    description: String
+    metadata: NodeMetadata
+}
+
+variant GraphLibraryItem_SubGraph : GraphLibraryItem {
+    id: String
+    name: String
+    graph: GraphEditorRepresentation
+    editable: Boolean
+}
+
+
+-- Metadata for categorizing library items
+entity NodeMetadata {
+    primary: String
+    secondary: String
+    tags: Set<String>
+}
+
+-- Result of an eligibility query
+entity EligibleLibraryItem {
+    library_item: GraphLibraryItem
+    pads: Set<PadEditorRepresentation>
+}
+
+-- ============================================================================
+-- VALIDATION AND NOTES
+-- ============================================================================
+
+-- Validation notes provide feedback on node state (errors, warnings, info)
+entity NodeNote {
+    level: NoteLevel
+    message: String
+    pad: String?
+    recommendations: Set<NodeNoteRecommendation>?
+}
+
+
+-- Suggested edits to fix a validation issue
+entity NodeNoteRecommendation {
+    message: String
+    edits: Set<Edit>?
+}
+
+-- ============================================================================
+-- TYPE SYSTEM
+-- ============================================================================
+
+-- Client-side pad value types for property pads
+entity ClientPadValue {
+    kind: ClientPadValueKind
+}
+
+variant ClientTriggerValue : ClientPadValue {}
+variant ClientStringValue : ClientPadValue { value: String }
+variant ClientIntegerValue : ClientPadValue { value: Integer }
+variant ClientFloatValue : ClientPadValue { value: Float }
+variant ClientBooleanValue : ClientPadValue { value: Boolean }
+variant ClientObjectValue : ClientPadValue { value: Any }
+variant ClientNodeReferenceValue : ClientPadValue { node_id: String }
+variant ClientSecretValue : ClientPadValue { secret_id: String }
+variant ClientEnumValue : ClientPadValue { value: String }
+
+
+-- ============================================================================
+-- PORTAL MODEL
+-- ============================================================================
+
+-- Portals enable subgraphs to expose internal pads to parent graphs.
+-- Portal creation is a two-phase operation for collaborative editing.
+
+entity Portal {
+    id: String
+    name: String
+    source_node: String
+    source_pad: String
+    editor_position: Point
+    ends: Set<PortalEnd>
+}
+
+entity PortalEnd {
+    id: String
+    editor_position: Point
+    next_pads: Set<PadReference>
+}
+
+-- ============================================================================
+-- RULES
+-- ============================================================================
+
+-- Validate edit operations before applying
+rule ValidateEditOperations {
+    when: request: EditRequest
+
+    requires: count(request.edits) > 0
+
+    ensures:
+        for edit in request.edits:
+            validate_edit(edit, current_graph)
+}
+
+-- Apply edit batch atomically
+rule ApplyEditBatch {
+    when: request: EditRequest
+
+    ensures:
+        for edit in request.edits:
+            apply_edit(edit, current_graph)
+    ensures: EditResponse(
+        req_id: request.req_id,
+        graph: updated_graph
+    )
+}
+
+-- Query eligible nodes for connection
+rule QueryEligibleNodes {
+    when: request: QueryEligibleNodeLibraryItemsRequest
+
+    requires: source_pad_exists(request.source_node, request.source_pad)
+    requires: is_source_pad(request.source_node, request.source_pad)
+
+    ensures:
+        let direct = filter_eligible_direct(request.source_node, request.source_pad)
+        let autoconvert = filter_eligible_autoconvert(request.source_node, request.source_pad)
+    ensures: QueryEligibleNodeLibraryItemsResponse(
+        req_id: request.req_id,
+        direct_eligible_items: direct,
+        autoconvert_eligible_items: autoconvert
+    )
+}
+
+-- Load graph from snapshot
+rule LoadGraphFromSnapshot {
+    when: request: LoadFromSnapshotRequest
+
+    ensures:
+        clear_current_graph()
+        for node_data in request.graph.nodes:
+            create_node(node_data)
+        for link in request.graph.pad_links:
+            connect_pads(link)
+        for portal in request.graph.portals:
+            create_portal(portal)
+    ensures: LoadFromSnapshotResponse(
+        req_id: request.req_id,
+        graph: current_graph
+    )
+}
+
+-- ============================================================================
+-- OPEN QUESTIONS
+-- ============================================================================
+
+open question "Collision resolution: How are concurrent edits from multiple clients resolved?"
+open question "Conflict detection: Should the protocol support optimistic locking or version vectors?"
+open question "Partial updates: Should responses include only changed portions or full graph state?"
+open question "Edit history: Should the protocol support undo/redo operations?"
