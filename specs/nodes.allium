@@ -1,42 +1,114 @@
-|-- allium: 2
-|--
-|-- Gabber Node Library Specification
-|-- Distilled from engine/gabber/nodes/ implementation
-|--
-|-- Scope: All node types for the Gabber graph execution engine
-|-- Includes: Core nodes, logic nodes, media nodes, primitive nodes, utility nodes,
-|--           timing nodes, subgraph nodes, tool nodes, debug nodes, STT/TTS/LLM nodes
-|-- Excludes:
-|--   - Engine graph execution (see engine.allium)
-|--   - Editor protocol (see editor.allium)
+-- allium: 2
 
+-- Gabber Node Library Specification
+-- Distilled from engine/gabber/nodes/ implementation
+
+-- Scope: All node types for the Gabber graph execution engine
+-- Includes: Core nodes, logic nodes, media nodes, primitive nodes, utility nodes,
+--           timing nodes, subgraph nodes, tool nodes, debug nodes, STT/TTS/LLM nodes
+-- Excludes:
+--   - Engine graph execution (see engine.allium)
+--   - Editor protocol (see editor.allium)
 
 -- ============================================================================
--- NODE BASE ABSTRACTION
+-- ENUMS AND TYPE DEFINITIONS
 -- ============================================================================
 
--- All nodes inherit from the Node base class and implement specific functionality
-entity Node {
-    id: String
-    type: NodeType
-    pads: Set<Pad>
-    configuration: NodeConfiguration
-    secrets: Set<Secret>
+enum CompareOperator {
+    LT
+    LE
+    EQ
+    NE
+    GE
+    GT
 }
 
--- Node metadata for categorization and discovery
-entity NodeMetadata {
-    primary: String           -- Category (core, ai, debug, etc.)
-    secondary: String         -- Subcategory (media, logic, primitive, etc.)
-    tags: Set<String>         -- Additional tags for filtering
+enum MessageRole {
+    System
+    User
+    Assistant
+    Tool
 }
 
--- Human-readable node description
-rule GetNodeDescription {
-    when: Node.get_description()
-    ensures: String returned describing node functionality
+enum CompareOperatorString {
+    EQUALS
+    NOT_EQUALS
+    NON_EMPTY
+    EMPTY
+    STARTS_WITH
+    ENDS_WITH
+    CONTAINS
 }
 
+enum CompareOperatorNumeric {
+    LESS_THAN
+    LESS_EQUAL
+    GREATER_THAN
+    GREATER_EQUAL
+}
+
+enum CompareOperatorBool {
+    TRUE
+    FALSE
+}
+
+enum STTService {
+    assembly_ai
+    local_kyutai
+    deepgram
+    local_gabber
+}
+
+enum TTSService {
+    cartesia
+    elevenlabs
+    openai
+    minimax
+    gabber
+}
+
+enum LLMService {
+    openai_compatible
+    mock
+}
+
+enum KittenTTSVoice {
+    expr_voice_2_m
+    expr_voice_2_f
+    expr_voice_3_m
+    expr_voice_3_f
+    expr_voice_4_m
+    expr_voice_4_f
+    expr_voice_5_m
+    expr_voice_5_f
+}
+
+enum VisemeType {
+    SILENCE
+    P
+    B
+    M
+    O
+    U
+    F
+    V
+    T_D_N
+    S_Z
+    TH
+    SH
+    K_G
+    L
+    R
+}
+
+-- ============================================================================
+-- PAD TYPES (value types for pad metadata)
+-- ============================================================================
+
+value StatelessSinkPad { id: String, group: String }
+value StatelessSourcePad { id: String, group: String }
+value PropertySinkPad { id: String, group: String }
+value PropertySourcePad { id: String, group: String }
 
 -- ============================================================================
 -- CORE MEDIA NODES
@@ -44,50 +116,42 @@ rule GetNodeDescription {
 
 -- Combines audio and video clips into a single AV clip
 entity AVClipZip {
-    node: Node
-    input_video_clip: StatelessSinkPad<AudioClip>
-    input_audio_clip: StatelessSinkPad<AudioClip>
-    output_av_clip: StatelessSourcePad<AVClip>
-}
-
-rule AVClipZipBehavior {
-    when: AVClipZip.run()
-    ensures:
-        waits for both video_clip and audio_clip inputs
-        combines into AVClip(video: video_clip, audio: audio_clip)
-        pushes AVClip to output_av_clip
+    video_clip: StatelessSinkPad
+    audio_clip: StatelessSinkPad
+    av_clip: StatelessSourcePad
 }
 
 -- Controls frame rate by dropping or duplicating frames
 entity FPS {
-    node: Node
-    input_video: StatelessSinkPad<VideoFrame>
-    output_video: StatelessSourcePad<VideoFrame>
-    fps_property: PropertySinkPad<Float>
+    input_video: StatelessSinkPad
+    output_video: StatelessSourcePad
+    fps_property: PropertySinkPad
 }
 
 -- Sliding window over media streams
 entity SlidingWindow {
-    node: Node
-    input_media: StatelessSinkPad<Media>
-    output_media: StatelessSourcePad<Media>
-    window_size_property: PropertySinkPad<Integer>
+    input_media: StatelessSinkPad
+    output_media: StatelessSourcePad
+    window_size_property: PropertySinkPad
 }
 
 -- Publishes media with metadata
 entity Publish {
-    node: Node
-    input_media: StatelessSinkPad<Media>
-    output_media: StatelessSourcePad<Media>
-    metadata_property: PropertySinkPad<Object>
+    input_media: StatelessSinkPad
+    output_media: StatelessSourcePad
+    metadata_property: PropertySinkPad
 }
 
 -- Provides publisher metadata
 entity PublisherMetadata {
-    node: Node
-    output_metadata: PropertySourcePad<Object>
+    output_metadata: PropertySourcePad
 }
 
+-- Outputs audio and video to the end user
+entity Output {
+    audio: StatelessSinkPad
+    video: StatelessSinkPad
+}
 
 -- ============================================================================
 -- CORE LOGIC NODES
@@ -95,80 +159,59 @@ entity PublisherMetadata {
 
 -- Boolean AND operation on trigger inputs
 entity AndNode {
-    node: Node
-    input_a: StatelessSinkPad<Trigger>
-    input_b: StatelessSinkPad<Trigger>
-    output: StatelessSourcePad<Trigger>
-}
-
-rule AndNodeBehavior {
-    when: AndNode.run()
-    requires: Both input_a and input_b receive triggers
-    ensures: output emits trigger when both inputs have received triggers
+    input_a: StatelessSinkPad
+    input_b: StatelessSinkPad
+    output: StatelessSourcePad
 }
 
 -- Boolean OR operation on trigger inputs
 entity OrNode {
-    node: Node
-    input_a: StatelessSinkPad<Trigger>
-    input_b: StatelessSinkPad<Trigger>
-    output: StatelessSourcePad<Trigger>
-}
-
-rule OrNodeBehavior {
-    when: OrNode.run()
-    requires: At least one input receives a trigger
-    ensures: output emits trigger when any input receives a trigger
+    input_a: StatelessSinkPad
+    input_b: StatelessSinkPad
+    output: StatelessSourcePad
 }
 
 -- Conditional gating of signals
 entity Gate {
-    node: Node
-    input_signal: StatelessSinkPad<Trigger>
-    gate_control: PropertySinkPad<Boolean>
-    output: StatelessSourcePad<Trigger>
-}
-
-rule GateBehavior {
-    when: Gate.run()
-    requires: gate_control is true
-    ensures: input_signal passes through to output
+    input_signal: StatelessSinkPad
+    gate_control: PropertySinkPad
+    output: StatelessSourcePad
 }
 
 -- Filters values based on conditions
 entity Filter {
-    node: Node
-    input_value: StatelessSinkPad<Value>
-    condition_property: PropertySinkPad<Object>
-    output_value: StatelessSourcePad<Value>
+    input_value: StatelessSinkPad
+    condition_property: PropertySinkPad
+    output_value: StatelessSourcePad
 }
 
 -- Comparison operations (LT, LE, EQ, NE, GE, GT)
 entity Compare {
-    node: Node
-    input_a: StatelessSinkPad<Number>
-    input_b: StatelessSinkPad<Number>
-    operator_property: PropertySinkPad<Enum[LT, LE, EQ, NE, GE, GT]>
-    output: StatelessSourcePad<Boolean>
+    input_a: StatelessSinkPad
+    input_b: StatelessSinkPad
+    operator_property: PropertySinkPad
+    output: StatelessSourcePad
 }
 
 -- Enum-based switching between multiple outputs
 entity EnumSwitch {
-    node: Node
-    input_trigger: StatelessSinkPad<Trigger>
-    switch_value: PropertySinkPad<Enum>
-    outputs: Map<EnumValue, StatelessSourcePad<Trigger>>
+    input_trigger: StatelessSinkPad
+    switch_value: PropertySinkPad
+    outputs: Set<StatelessSourcePad>
 }
+
+-- ============================================================================
+-- STATE MACHINE NODE
+-- ============================================================================
 
 -- Finite state machine controller with dynamic states and transitions
 entity StateMachine {
-    node: Node
-    configuration: PropertySinkPad<Object>  -- StateMachineConfiguration
-    num_parameters: PropertySinkPad<Integer>
-    current_state: PropertySourcePad<Enum>
-    previous_state: PropertySourcePad<Enum>
-    parameter_names: List<PropertySinkPad<String>>
-    parameter_values: List<SinkPad<Value>>
+    configuration: PropertySinkPad
+    num_parameters: PropertySinkPad
+    current_state: PropertySourcePad
+    previous_state: PropertySourcePad
+    parameter_names: List<PropertySinkPad>
+    parameter_values: List<SinkPad>
 }
 
 entity StateMachineConfiguration {
@@ -194,21 +237,9 @@ entity StateMachineTransition {
 
 entity StateMachineTransitionCondition {
     parameter_name: String?
-    operator: String?  -- <, <=, ==, !=, >=, >, NON_EMPTY, EMPTY, STARTS_WITH, ENDS_WITH, CONTAINS, TRUE, FALSE
+    operator: String?
     value: Any?
 }
-
-rule StateMachineTransitionBehavior {
-    when: StateMachine.check_transitions(from_state, current_state)
-    requires:
-        transition exists where from_state matches
-        all conditions in transition are met
-    ensures:
-        previous_state = current_state
-        current_state = transition.to_state
-        Emit state change events on current_state and previous_state pads
-}
-
 
 -- ============================================================================
 -- CORE SUBGRAPH NODES
@@ -216,16 +247,14 @@ rule StateMachineTransitionBehavior {
 
 -- Embeds a subgraph within the parent graph
 entity SubGraph {
-    node: Node
-    subgraph_id: PropertySinkPad<String>
-    -- Dynamic proxy pads based on subgraph configuration
+    subgraph_id: PropertySinkPad
     proxy_pads: Set<ProxyPad>
 }
 
 -- Proxy property sink - exposes internal property sink to parent
 entity ProxyPropertySink {
     pad: PropertySinkPad
-    target_pad: Pad  -- Internal subgraph pad
+    target_pad: Pad
 }
 
 -- Proxy property source - exposes internal property source to parent
@@ -246,27 +275,23 @@ entity ProxyStatelessSource {
     target_pad: Pad
 }
 
-
 -- ============================================================================
 -- CORE TOOL NODES
 -- ============================================================================
 
 -- Model Context Protocol (MCP) tool integration
 entity MCP {
-    node: Node
-    server_config: PropertySinkPad<Object>
-    tool_name: PropertySinkPad<String>
-    input_arguments: PropertySinkPad<Object>
-    output_result: PropertySourcePad<Object>
+    server_config: PropertySinkPad
+    tool_name: PropertySinkPad
+    input_arguments: PropertySinkPad
+    output_result: PropertySourcePad
 }
 
 -- Groups multiple tools together
 entity ToolGroup {
-    node: Node
     tools: List<Tool>
-    configuration: PropertySinkPad<Object>
+    configuration: PropertySinkPad
 }
-
 
 -- ============================================================================
 -- CORE TIMING NODES
@@ -274,30 +299,16 @@ entity ToolGroup {
 
 -- Delays signals by specified duration
 entity Delay {
-    node: Node
-    input: StatelessSinkPad<Trigger>
-    output: StatelessSourcePad<Trigger>
-    delay_property: PropertySinkPad<Float>  -- Duration in seconds
-}
-
-rule DelayBehavior {
-    when: Delay.run()
-    requires: input receives trigger
-    ensures: After delay_property seconds, output emits trigger
+    input: StatelessSinkPad
+    output: StatelessSourcePad
+    delay_property: PropertySinkPad
 }
 
 -- Generates periodic triggers
 entity Ticker {
-    node: Node
-    output: StatelessSourcePad<Trigger>
-    interval_property: PropertySinkPad<Float>  -- Duration in seconds
+    output: StatelessSourcePad
+    interval_property: PropertySinkPad
 }
-
-rule TickerBehavior {
-    when: Ticker.run()
-    ensures: output emits trigger every interval_property seconds
-}
-
 
 -- ============================================================================
 -- CORE PRIMITIVE NODES
@@ -305,62 +316,49 @@ rule TickerBehavior {
 
 -- Stores and manages string values
 entity StringNode {
-    node: Node
-    set: StatelessSinkPad<String>
-    emit: StatelessSinkPad<Trigger>
-    value: PropertySourcePad<String>
-    changed: StatelessSourcePad<String>
-}
-
-rule StringNodeBehavior {
-    when: StringNode.set receives value
-    ensures:
-        value pad updated with new string
-        If value changed, changed pad emits new value
+    set: StatelessSinkPad
+    emit: StatelessSinkPad
+    value: PropertySourcePad
+    changed: StatelessSourcePad
 }
 
 -- Stores and manages integer values
 entity Integer {
-    node: Node
-    set: StatelessSinkPad<Integer>
-    emit: StatelessSinkPad<Trigger>
-    value: PropertySourcePad<Integer>
-    changed: StatelessSourcePad<Integer>
+    set: StatelessSinkPad
+    emit: StatelessSinkPad
+    value: PropertySourcePad
+    changed: StatelessSourcePad
 }
 
 -- Stores and manages float values
 entity Float {
-    node: Node
-    set: StatelessSinkPad<Float>
-    emit: StatelessSinkPad<Trigger>
-    value: PropertySourcePad<Float>
-    changed: StatelessSourcePad<Float>
+    set: StatelessSinkPad
+    emit: StatelessSinkPad
+    value: PropertySourcePad
+    changed: StatelessSourcePad
 }
 
 -- Stores and manages boolean values
 entity Boolean {
-    node: Node
-    set: StatelessSinkPad<Boolean>
-    emit: StatelessSinkPad<Trigger>
-    value: PropertySourcePad<Boolean>
-    changed: StatelessSourcePad<Boolean>
+    set: StatelessSinkPad
+    emit: StatelessSinkPad
+    value: PropertySourcePad
+    changed: StatelessSourcePad
 }
 
 -- JSON data storage and manipulation
 entity JSON {
-    node: Node
-    set_json: StatelessSinkPad<String>
-    emit: StatelessSinkPad<Trigger>
-    value: PropertySourcePad<Object>
-    changed: StatelessSourcePad<Object>
+    set_json: StatelessSinkPad
+    emit: StatelessSinkPad
+    value: PropertySourcePad
+    changed: StatelessSourcePad
 }
 
 -- LLM context message management
 entity ContextMessage {
-    node: Node
-    role: PropertySinkPad<Enum[System, User, Assistant, Tool]>
-    content: PropertySinkPad<String>
-    message: PropertySourcePad<ContextMessage>
+    role: PropertySinkPad
+    content: PropertySinkPad
+    message: PropertySourcePad
 }
 
 entity ContextMessageValue {
@@ -370,30 +368,34 @@ entity ContextMessageValue {
     tool_call_id: String?
 }
 
+-- Creates context messages from multiple content inputs
+entity ContextMessageZip {
+    role: PropertySinkPad
+    context_message: StatelessSourcePad
+    num_contents: PropertySinkPad
+    content: List<StatelessSinkPad>
+}
+
 -- Creates context messages for LLM conversations
 entity CreateContextMessage {
-    node: Node
-    role: PropertySinkPad<Enum[System, User, Assistant, Tool]>
-    text_content: PropertySinkPad<String>
-    message_output: StatelessSourcePad<ContextMessage>
+    role: PropertySinkPad
+    text_content: PropertySinkPad
+    message_output: StatelessSourcePad
 }
 
 -- Stores variable references
 entity Variable {
-    node: Node
-    set: StatelessSinkPad<Value>
-    emit: StatelessSinkPad<Trigger>
-    value: PropertySourcePad<Value>
-    changed: StatelessSourcePad<Value>
+    set: StatelessSinkPad
+    emit: StatelessSinkPad
+    value: PropertySourcePad
+    changed: StatelessSourcePad
 }
 
 -- Documentation/comment node (no functional behavior)
 entity Comment {
-    node: Node
-    text: PropertySinkPad<String>
-    position: PropertySinkPad<Point>
+    text: PropertySinkPad
+    position: PropertySinkPad
 }
-
 
 -- ============================================================================
 -- CORE UTILITY NODES
@@ -401,73 +403,57 @@ entity Comment {
 
 -- Template rendering using Jinja2
 entity Jinja2 {
-    node: Node
-    num_properties: PropertySinkPad<Integer>
-    jinja_template: PropertySinkPad<String>
-    property_names: List<PropertySinkPad<String>>
-    property_values: List<PropertySinkPad<Value>>
-    property_value_sources: List<PropertySourcePad<Value>>
-    rendered_output: PropertySourcePad<String>
-}
-
-rule Jinja2Behavior {
-    when: Jinja2.run()
-    ensures:
-        Template rendered with current property values
-        rendered_output updated with result
-        When any property_value changes, re-render and update output
+    num_properties: PropertySinkPad
+    jinja_template: PropertySinkPad
+    property_names: List<PropertySinkPad>
+    property_values: List<PropertySinkPad>
+    property_value_sources: List<PropertySourcePad>
+    rendered_output: PropertySourcePad
 }
 
 -- Merges multiple values into one
 entity Merge {
-    node: Node
-    inputs: List<StatelessSinkPad<Value>>
-    output: StatelessSourcePad<Value>
+    inputs: List<StatelessSinkPad>
+    output: StatelessSourcePad
 }
 
 -- Converts between types automatically
 entity AutoConvert {
-    node: Node
-    input: StatelessSinkPad<Value>
-    target_type: PropertySinkPad<Enum[String, Integer, Float, Boolean, Object]>
-    output: StatelessSourcePad<Value>
+    input: StatelessSinkPad
+    target_type: PropertySinkPad
+    output: StatelessSourcePad
 }
 
 -- Applies type constraints to values
 entity TypeConstraint {
-    node: Node
-    input: StatelessSinkPad<Value>
-    constraint_type: PropertySinkPad<Enum[String, Integer, Float, Boolean, Enum]>
-    constraints: PropertySinkPad<Object>  -- min, max, options, etc.
-    output: StatelessSourcePad<Value>
+    input: StatelessSinkPad
+    constraint_type: PropertySinkPad
+    constraints: PropertySinkPad
+    output: StatelessSourcePad
 }
 
 -- No operation node (passes through values unchanged)
 entity Noop {
-    node: Node
-    input: StatelessSinkPad<Value>
-    output: StatelessSourcePad<Value>
-}
-
-rule NoopBehavior {
-    when: Noop.input receives value
-    ensures: output emits same value immediately
+    input: StatelessSinkPad
+    output: StatelessSourcePad
 }
 
 -- Demo node showing bouncing ball animation
 entity BouncingBall {
-    node: Node
-    output_frame: StatelessSourcePad<VideoFrame>
-    position: PropertySinkPad<Point>
-    velocity: PropertySinkPad<Point>
+    output_frame: StatelessSourcePad
+    position: PropertySinkPad
+    velocity: PropertySinkPad
 }
 
 -- Entry point for graph execution
 entity Entry {
-    node: Node
-    output_trigger: StatelessSourcePad<Trigger>
+    output_trigger: StatelessSourcePad
 }
 
+-- Manually activate a trigger to run an action
+entity ButtonTrigger {
+    trigger: StatelessSourcePad
+}
 
 -- ============================================================================
 -- CORE DEBUG NODES
@@ -475,19 +461,16 @@ entity Entry {
 
 -- Interactive chat input for debugging
 entity ChatInput {
-    node: Node
-    message_input: PropertySinkPad<String>
-    message_output: StatelessSourcePad<String>
-    send_trigger: StatelessSinkPad<Trigger>
+    message_input: PropertySinkPad
+    message_output: StatelessSourcePad
+    send_trigger: StatelessSinkPad
 }
 
 -- Displays viseme data for debugging lip-sync
 entity VisemeDebug {
-    node: Node
-    viseme_input: StatelessSinkPad<Viseme>
-    display_value: PropertySourcePad<Enum[VisemeType]>
+    viseme_input: StatelessSinkPad
+    display_value: PropertySourcePad
 }
-
 
 -- ============================================================================
 -- STT NODES (Speech-to-Text)
@@ -495,47 +478,44 @@ entity VisemeDebug {
 
 -- Generic STT node with multiple backend support
 entity STT {
-    node: Node
-    service: PropertySinkPad<Enum[assembly_ai, local_kyutai, deepgram, local_gabber]>
-    audio: StatelessSinkPad<Audio>
-    speech_clip: StatelessSourcePad<AudioClip>
-    speech_started: StatelessSourcePad<Trigger>
-    speech_ended: StatelessSourcePad<Trigger>
-    final_transcription: StatelessSourcePad<String>
-    api_key: PropertySinkPad<Secret>
-    is_speaking: PropertySourcePad<Boolean>
+    service: PropertySinkPad
+    audio: StatelessSinkPad
+    speech_clip: StatelessSourcePad
+    speech_started: StatelessSourcePad
+    speech_ended: StatelessSourcePad
+    final_transcription: StatelessSourcePad
+    api_key: PropertySinkPad
+    is_speaking: PropertySourcePad
 }
 
-rule STTBehavior {
-    when: STT.run()
-    ensures:
-        Based on service selection, instantiate appropriate STT backend
-        Audio streamed to backend
-        speech_started emitted when speech detected
-        final_transcription emitted at end of turn
-        speech_ended emitted when speech ends
+-- Local Gabber STT node
+entity LocalSTT {
+    audio: StatelessSinkPad
+    port: PropertySinkPad
+    speech_clip: StatelessSourcePad
+    speech_started: StatelessSourcePad
+    speech_ended: StatelessSourcePad
+    final_transcription: StatelessSourcePad
+    is_speaking: PropertySourcePad
 }
 
 -- Multi-participant STT for distinguishing speakers
 entity MultiParticipantSTT {
-    node: Node
-    audio: StatelessSinkPad<Audio>
-    participant_id: PropertySinkPad<String>
-    transcriptions: Map<String, StatelessSourcePad<String>>
-    speech_started: StatelessSourcePad<Trigger>
-    speech_ended: StatelessSourcePad<Trigger>
+    audio: StatelessSinkPad
+    participant_id: PropertySinkPad
+    transcriptions: Set<StatelessSourcePad>
+    speech_started: StatelessSourcePad
+    speech_ended: StatelessSourcePad
 }
 
 -- VAD (Voice Activity Detection) node
 entity VAD {
-    node: Node
-    audio: StatelessSinkPad<Audio>
-    speech_started: StatelessSourcePad<Trigger>
-    speech_ended: StatelessSourcePad<Trigger>
-    is_speaking: PropertySourcePad<Boolean>
-    threshold: PropertySinkPad<Float>
+    audio: StatelessSinkPad
+    speech_started: StatelessSourcePad
+    speech_ended: StatelessSourcePad
+    is_speaking: PropertySourcePad
+    threshold: PropertySinkPad
 }
-
 
 -- ============================================================================
 -- TTS NODES (Text-to-Speech)
@@ -543,66 +523,56 @@ entity VAD {
 
 -- Generic TTS node with multiple backend support
 entity TTS {
-    node: Node
-    service: PropertySinkPad<Enum[cartesia, elevenlabs, openai, minimax, gabber]>
-    text: StatelessSinkPad<String>
-    audio: StatelessSourcePad<Audio>
-    api_key: PropertySinkPad<Secret>
-    voice: PropertySinkPad<String>
-}
-
-rule TTSBehavior {
-    when: TTS.run()
-    requires: text received on text input
-    ensures:
-        Based on service selection, instantiate appropriate TTS backend
-        Generate audio from text
-        Emit audio on audio output
+    service: PropertySinkPad
+    text: StatelessSinkPad
+    audio: StatelessSourcePad
+    api_key: PropertySinkPad
+    voice: PropertySinkPad
 }
 
 -- Cartesia TTS backend
 entity CartesiaTTS {
-    node: Node
-    text: StatelessSinkPad<String>
-    audio: StatelessSourcePad<Audio>
-    api_key: PropertySinkPad<Secret>
-    voice: PropertySinkPad<String>
+    text: StatelessSinkPad
+    audio: StatelessSourcePad
+    api_key: PropertySinkPad
+    voice: PropertySinkPad
 }
 
 -- ElevenLabs TTS backend
 entity ElevenLabsTTS {
-    node: Node
-    text: StatelessSinkPad<String>
-    audio: StatelessSourcePad<Audio>
-    api_key: PropertySinkPad<Secret>
-    voice: PropertySinkPad<String>
+    text: StatelessSinkPad
+    audio: StatelessSourcePad
+    api_key: PropertySinkPad
+    voice: PropertySinkPad
 }
 
 -- OpenAI TTS backend
 entity OpenAITTS {
-    node: Node
-    text: StatelessSinkPad<String>
-    audio: StatelessSourcePad<Audio>
-    api_key: PropertySinkPad<Secret>
-    voice: PropertySinkPad<String>
+    text: StatelessSinkPad
+    audio: StatelessSourcePad
+    api_key: PropertySinkPad
+    voice: PropertySinkPad
 }
 
 -- MiniMax TTS backend
 entity MiniMaxTTS {
-    node: Node
-    text: StatelessSinkPad<String>
-    audio: StatelessSourcePad<Audio>
-    api_key: PropertySinkPad<Secret>
-    voice: PropertySinkPad<String>
+    text: StatelessSinkPad
+    audio: StatelessSourcePad
+    api_key: PropertySinkPad
+    voice: PropertySinkPad
 }
 
--- Gabber TTS backend
-entity GabberTTS {
-    node: Node
-    text: StatelessSinkPad<String>
-    audio: StatelessSourcePad<Audio>
+-- Gabber TTS backend (KittenTTS)
+entity KittenTTS {
+    voice_id: PropertySinkPad
+    text: StatelessSinkPad
+    audio: StatelessSourcePad
+    cancel_trigger: StatelessSinkPad
+    complete_transcription: StatelessSourcePad
+    tts_started: StatelessSourcePad
+    tts_ended: StatelessSourcePad
+    is_talking: PropertySourcePad
 }
-
 
 -- ============================================================================
 -- LLM NODES
@@ -610,64 +580,58 @@ entity GabberTTS {
 
 -- Generic LLM node with multiple backend support
 entity LLM {
-    node: Node
-    service: PropertySinkPad<Enum[openai_compatible, mock]>
-    system_message: PropertySinkPad<String>
-    messages: PropertySinkPad<List<ContextMessage>>
-    response: StatelessSourcePad<String>
-    api_key: PropertySinkPad<Secret>
-    model: PropertySinkPad<String>
-    temperature: PropertySinkPad<Float>
+    service: PropertySinkPad
+    system_message: PropertySinkPad
+    messages: PropertySinkPad
+    response: StatelessSourcePad
+    api_key: PropertySinkPad
+    model: PropertySinkPad
+    temperature: PropertySinkPad
 }
 
 -- OpenAI-compatible LLM backend
 entity OpenAICompatibleLLM {
-    node: Node
-    system_message: PropertySinkPad<String>
-    messages: PropertySinkPad<List<ContextMessage>>
-    response: StatelessSourcePad<String>
-    api_key: PropertySinkPad<Secret>
-    model: PropertySinkPad<String>
-    temperature: PropertySinkPad<Float>
-    base_url: PropertySinkPad<String>
+    system_message: PropertySinkPad
+    messages: PropertySinkPad
+    response: StatelessSourcePad
+    api_key: PropertySinkPad
+    model: PropertySinkPad
+    temperature: PropertySinkPad
+    base_url: PropertySinkPad
 }
 
 -- Mock LLM for testing
 entity MockLLM {
-    node: Node
-    system_message: PropertySinkPad<String>
-    messages: PropertySinkPad<List<ContextMessage>>
-    response: StatelessSourcePad<String>
-    mock_response: PropertySinkPad<String>
+    system_message: PropertySinkPad
+    messages: PropertySinkPad
+    response: StatelessSourcePad
+    mock_response: PropertySinkPad
 }
 
-
--- ============================================================================
--- PAD TYPE CONSTRAINTS
--- ============================================================================
-
-entity PadConstraint {
-    type: BasePadType
-    min_length: Integer?
-    max_length: Integer?
-    minimum: Number?
-    maximum: Number?
-    options: Set<String>?  -- For Enum types
-    item_type_constraints: Set<PadConstraint>?  -- For List types
-    object_schema: ObjectSchema?  -- For Object types
-    node_types: Set<String>?  -- For NodeReference types
+-- Local LLM node (Qwen-omni)
+entity LocalLLM {
+    port: PropertySinkPad
+    max_context_len: PropertySinkPad
+    system_message: PropertySinkPad
+    messages: PropertySinkPad
+    response: StatelessSourcePad
+    temperature: PropertySinkPad
 }
 
-enum BasePadType {
-    Trigger, String, Integer, Float, Boolean,
-    Object, NodeReference, Secret, Enum,
-    Audio, AudioClip, Video, VideoFrame, VideoClip,
-    AVClip, ContextMessage, ToolCall, ToolDefinition, Viseme
+-- ============================================================================
+-- LOCAL NODES
+-- ============================================================================
+
+-- Local viseme generation for lip-sync
+entity LocalViseme {
+    audio: StatelessSinkPad
+    audio_src: StatelessSourcePad
+    port: PropertySinkPad
+    viseme: StatelessSourcePad
 }
 
-
 -- ============================================================================
--- NODE REGISTRY AND DISCOVERY
+-- NODE LIBRARY AND DISCOVERY
 -- ============================================================================
 
 -- Node library for discovering available node types
@@ -685,16 +649,14 @@ entity LibraryItem {
 
 entity PadDefinition {
     id: String
-    type: PadType
-    direction: Sink | Source
-    property | Stateless: Boolean
+    type: BasePadType
+    direction: Direction
+    is_property: Boolean
+    is_stateless: Boolean
     default_type_constraints: Set<PadConstraint>
 }
 
-rule QueryEligibleNodes {
-    when: Graph.query_eligible_nodes(source_pad: Pad)
-    requires: source_pad is a SourcePad
-    ensures:
-        Return all LibraryItems that have compatible SinkPads
-        Compatible means type constraints intersect non-empty
+enum Direction {
+    Sink
+    Source
 }
