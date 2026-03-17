@@ -124,6 +124,194 @@ rule PadTypeCompatibility {
             p.set_type_constraints(intersection)
 }
 
+
+-- ============================================================================
+-- TYPE CONSTRAINT HELPERS
+-- ============================================================================
+
+
+-- Compute intersection of type constraint sets
+-- Semantic: Returns the set of type constraints that are common to both input sets.
+-- Used to determine if two pads can connect (intersection must be non-empty).
+-- Example: INTERSECTION({String, Integer}, {String, Boolean}) = {String}
+rule INTERSECTION {
+    when: INTERSECTION(set1: Set<TypeConstraint>, set2: Set<TypeConstraint>)
+
+    ensures:
+        -- The intersection contains only types present in both sets
+        result = Set<TypeConstraint>
+        for tc in set1:
+            if tc in set2:
+                result.add(tc)
+        result
+}
+
+
+-- Get all pads connected in the same cluster
+-- Semantic: Returns all pads reachable from the input pad through connections.
+-- Uses breadth-first search to find the transitive closure of connected pads.
+-- Used for propagating type constraints across a connected pad cluster.
+-- Example: connected_pad_cluster(pad_a) = {pad_a, pad_b, pad_c} if they are all connected
+rule connected_pad_cluster {
+    when: connected_pad_cluster(pad: Pad)
+
+    ensures:
+        -- Collect all pads reachable through connections
+        cluster = Set<Pad>
+        visited = Set<Pad>
+        queue = List<Pad>
+        queue.add(pad)
+        for _ in range(queue.count):
+            current = queue.pop()
+            if current not in visited:
+                visited.add(current)
+                cluster.add(current)
+                for next in current.get_next_pads():
+                    queue.add(next)
+                for prev in current.get_previous_pads():
+                    queue.add(prev)
+        cluster
+}
+
+
+-- Pad type constraint operations
+-- These describe the semantics of type constraint propagation
+rule pad_get_type_constraints {
+    when: pad.get_type_constraints()
+
+    ensures: pad._type_constraints
+}
+
+
+rule pad_set_type_constraints {
+    when: pad.set_type_constraints(constraints: Set<TypeConstraint>)
+
+    ensures: pad._type_constraints = constraints
+}
+
+
+rule pad_get_default_type_constraints {
+    when: pad.get_default_type_constraints()
+
+    ensures: pad._default_type_constraints
+}
+
+
+-- ============================================================================
+-- PAD CONNECTION HELPERS
+-- ============================================================================
+
+
+-- ============================================================================
+-- PAD CONNECTION HELPERS
+-- ============================================================================
+
+
+-- Check if a pad can connect to another
+-- Semantic: Returns true if type constraints have non-empty intersection
+rule pad_can_connect {
+    when: source_pad.can_connect(target: SinkPad)
+
+    ensures:
+        intersection = INTERSECTION(
+            source_pad.get_type_constraints(),
+            target.get_type_constraints()
+        )
+        intersection != empty
+}
+
+
+-- Pad navigation operations
+rule pad_get_previous_pad {
+    when: pad.get_previous_pad()
+
+    ensures: pad._previous_pad
+}
+
+
+rule pad_get_next_pads {
+    when: pad.get_next_pads()
+
+    ensures: pad._next_pads
+}
+
+
+rule pad_set_previous_pad {
+    when: pad.set_previous_pad(previous_pad: Pad?)
+
+    ensures: pad._previous_pad = previous_pad
+}
+
+
+rule pad_add_next_pad {
+    when: pad.add_next_pad(next_pad: Pad)
+
+    ensures: pad._next_pads.add(next_pad)
+}
+
+
+-- ============================================================================
+-- REQUEST CONTEXT HELPERS
+-- ============================================================================
+
+
+-- ============================================================================
+-- REQUEST CONTEXT HELPERS
+-- ============================================================================
+
+
+-- Create new context
+rule request_context_new {
+    when: new_context(parent: RequestContext)
+
+    ensures:
+        RequestContext.created(
+            parent: parent,
+            timeout: parent.timeout,
+            originator: "generated",
+            publisher_metadata: parent.publisher_metadata
+        )
+}
+
+
+-- Complete request context
+rule request_context_complete {
+    when: ctx.complete()
+
+    ensures: ctx._complete = true
+}
+
+
+-- ============================================================================
+-- ITEM AND VALUE HELPERS
+-- ============================================================================
+
+
+-- Create item with value and context
+rule item_create {
+    when: Item.created(value: RuntimeValue, ctx: RequestContext)
+
+    ensures:
+        Item(value: value, ctx: ctx)
+}
+
+
+-- Queue operations
+rule queue_put {
+    when: queue.put(item: Item)
+
+    ensures: queue.add(item)
+}
+
+
+-- Get queue from sink pad
+rule sink_pad_get_queue {
+    when: sink_pad._get_queue()
+
+    ensures: sink_pad._queue
+}
+
+
 -- Data flows from source to all connected sinks
 rule DataPropagation {
     when: source_pad.push_item(value: RuntimeValue, ctx: RequestContext)

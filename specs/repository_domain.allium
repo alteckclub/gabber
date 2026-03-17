@@ -1,0 +1,412 @@
+-- allium: 2
+
+use "./core.allium" as core
+
+
+-- ============================================================================
+-- REPOSITORY DOMAIN SPECIFICATION
+-- ============================================================================
+-- This module contains PURE DOMAIN RULES for app and subgraph management.
+-- It describes WHAT operations do, not HOW they are persisted.
+--
+-- Separation of Concerns:
+-- - Domain rules (this file): Business logic, validation, transformations
+-- - Persistence rules (repository_persistence.allium): File I/O, storage
+--
+-- Benefits:
+-- - Domain rules are testable without file system
+-- - Clearer intent - rules describe behaviour, not implementation
+-- - Easier to swap storage backends (file -> database -> cloud)
+
+
+-- ============================================================================
+-- DOMAIN ENTITIES
+-- ============================================================================
+
+
+-- An app in the repository
+entity RepositoryApp {
+    id: String                  -- UUID identifier
+    name: String                -- Human-readable name
+    created_at: Timestamp
+    updated_at: Timestamp
+    graph: GraphEditorRepresentation  -- The app's graph definition
+}
+
+
+-- A subgraph in the repository
+entity RepositorySubGraph {
+    id: String                  -- UUID identifier
+    name: String                -- Human-readable name
+    created_at: Timestamp
+    updated_at: Timestamp
+    graph: GraphEditorRepresentation  -- The subgraph's graph definition
+}
+
+
+-- Export bundle for app with subgraphs
+entity AppExport {
+    app: RepositoryApp
+    subgraphs: List<RepositorySubGraph>  -- Associated subgraphs
+}
+
+
+-- Export bundle for subgraph with nested subgraphs
+entity SubGraphExport {
+    subgraph: RepositorySubGraph
+    nested_subgraphs: List<RepositorySubGraph>  -- Nested dependencies
+}
+
+
+-- Connection details for app execution
+entity AppRunConnectionDetails {
+    url: String                 -- LiveKit server URL
+    token: String               -- JWT token for authentication
+}
+
+
+-- Public secret (name only, value is masked)
+entity PublicSecret {
+    name: String                -- Secret identifier
+    value: String               -- Secret value (masked in responses)
+}
+
+
+-- ============================================================================
+-- DOMAIN RULES: APP OPERATIONS
+-- ============================================================================
+
+
+-- Save an app (create or update)
+-- This is the DOMAIN rule - it describes WHAT happens, not HOW it's stored
+rule DomainSaveApp {
+    when: SaveAppRequest(id: String?, name: String, graph: GraphEditorRepresentation)
+
+    ensures:
+        if request.id != null:
+            existing_app = DomainLoadApp(request.id)
+            if existing_app != null:
+                existing_app.name = request.name
+                existing_app.graph = request.graph
+                existing_app.updated_at = now()
+                DomainSaveAppResult.created(app: existing_app, action: "updated")
+            if existing_app = null:
+                DomainSaveAppResult.created(error: "App not found", action: "error")
+        if request.id = null:
+            new_app = RepositoryApp.created(
+                id: generate_uuid(),
+                name: request.name,
+                graph: request.graph,
+                created_at: now(),
+                updated_at: now()
+            )
+            DomainSaveAppResult.created(app: new_app, action: "created")
+}
+
+
+-- Load an app by ID
+rule DomainLoadApp {
+    when: LoadAppRequest(id: String)
+
+    requires: length(id) = 36   -- UUID format validation
+
+    ensures: LoadAppResult(app: RepositoryApp?)
+}
+
+
+-- Delete an app by ID
+rule DomainDeleteApp {
+    when: DeleteAppRequest(id: String)
+
+    requires: length(id) = 36
+
+    ensures:
+        app = DomainLoadApp(id)
+        if app != null:
+            DomainDeleteAppResult.created(success: true, action: "deleted")
+        if app = null:
+            DomainDeleteAppResult.created(success: false, action: "not_found")
+}
+
+
+-- List all apps
+rule DomainListApps {
+    when: ListAppsRequest()
+
+    ensures: DomainListAppsResult.created(
+        apps: sort_by_created_at_desc(all_apps())
+    )
+}
+
+
+-- ============================================================================
+-- DOMAIN RULES: SUBGRAPH OPERATIONS
+-- ============================================================================
+
+
+-- Save a subgraph (create or update)
+rule DomainSaveSubgraph {
+    when: SaveSubgraphRequest(id: String?, name: String, graph: GraphEditorRepresentation)
+
+    ensures:
+        if request.id != null:
+            existing_sg = DomainLoadSubgraph(request.id)
+            if existing_sg != null:
+                existing_sg.name = request.name
+                existing_sg.graph = request.graph
+                existing_sg.updated_at = now()
+                DomainSaveSubgraphResult.created(sub_graph: existing_sg, action: "updated")
+            if existing_sg = null:
+                DomainSaveSubgraphResult.created(error: "Subgraph not found", action: "error")
+        if request.id = null:
+            new_sg = RepositorySubGraph.created(
+                id: generate_uuid(),
+                name: request.name,
+                graph: request.graph,
+                created_at: now(),
+                updated_at: now()
+            )
+            DomainSaveSubgraphResult.created(sub_graph: new_sg, action: "created")
+}
+
+
+-- Load a subgraph by ID
+rule DomainLoadSubgraph {
+    when: LoadSubgraphRequest(id: String)
+
+    requires: length(id) = 36
+
+    ensures: LoadSubgraphResult(sub_graph: RepositorySubGraph?)
+}
+
+
+-- Delete a subgraph by ID
+rule DomainDeleteSubgraph {
+    when: DeleteSubgraphRequest(id: String)
+
+    requires: length(id) = 36
+
+    ensures:
+        sg = DomainLoadSubgraph(id)
+        if sg != null:
+            DomainDeleteSubgraphResult.created(success: true, action: "deleted")
+        if sg = null:
+            DomainDeleteSubgraphResult.created(success: false, action: "not_found")
+}
+
+
+-- List all subgraphs
+rule DomainListSubgraphs {
+    when: ListSubgraphsRequest()
+
+    ensures: DomainListSubgraphsResult.created(
+        sub_graphs: sort_by_created_at_desc(all_subgraphs())
+    )
+}
+
+
+-- ============================================================================
+-- DOMAIN RULES: IMPORT/EXPORT
+-- ============================================================================
+
+
+-- Export an app with its subgraphs
+rule DomainExportApp {
+    when: ExportAppRequest(id: String)
+
+    ensures:
+        app = DomainLoadApp(id)
+        subgraph_ids = DomainExtractSubgraphIds(app.graph)
+        subgraphs = DomainLoadSubgraphs(subgraph_ids)
+        cleaned_app = DomainStripSecrets(app)
+        cleaned_subgraphs = DomainStripSecrets(subgraphs)
+        DomainExportAppResult.created(
+            export: AppExport.created(
+                app: cleaned_app,
+                subgraphs: cleaned_subgraphs
+            )
+        )
+}
+
+
+-- Import an app with ID conflict resolution
+rule DomainImportApp {
+    when: ImportAppRequest(export: AppExport)
+
+    ensures:
+        mapping = DomainResolveSubgraphIdConflicts(export.subgraphs)
+        new_app = DomainImportAppWithMapping(export.app, mapping)
+        DomainImportAppResult.created(app: new_app)
+}
+
+
+-- Export a subgraph with nested subgraphs
+rule DomainExportSubgraph {
+    when: ExportSubgraphRequest(id: String)
+
+    ensures:
+        subgraph = DomainLoadSubgraph(id)
+        nested_ids = DomainExtractAllNestedSubgraphIds(subgraph.graph)
+        nested_subgraphs = DomainLoadSubgraphs(nested_ids)
+        cleaned_subgraph = DomainStripSecrets(subgraph)
+        cleaned_nested = DomainStripSecrets(nested_subgraphs)
+        DomainExportSubgraphResult.created(
+            export: SubGraphExport.created(
+                subgraph: cleaned_subgraph,
+                nested_subgraphs: cleaned_nested
+            )
+        )
+}
+
+
+-- Import a subgraph with ID conflict resolution
+rule DomainImportSubgraph {
+    when: ImportSubgraphRequest(export: SubGraphExport)
+
+    ensures:
+        mapping = DomainResolveSubgraphIdConflicts(export.nested_subgraphs)
+        new_sg = DomainImportSubgraphWithMapping(export.subgraph, mapping)
+        DomainImportSubgraphResult.created(sub_graph: new_sg)
+}
+
+
+-- ============================================================================
+-- DOMAIN HELPER FUNCTIONS
+-- ============================================================================
+
+
+-- Extract subgraph IDs from a graph
+rule DomainExtractSubgraphIds {
+    input: GraphEditorRepresentation
+    output: Set<String>
+
+    ensures:
+        ids = Set<String>
+        for node in graph.nodes:
+            if node.type = "SubGraph":
+                id_pad = FindPad(node.pads, "__subgraph_id__")
+                if id_pad.value.type = String:
+                    ids.add(id_pad.value.value)
+        ids
+}
+
+
+-- Extract all nested subgraph IDs recursively
+rule DomainExtractAllNestedSubgraphIds {
+    input: GraphEditorRepresentation
+    output: Set<String>
+
+    ensures:
+        nested = DomainCollectAllSubgraphIds(graph)
+        nested
+}
+
+
+-- Update graph subgraph references using ID mapping
+rule DomainUpdateGraphReferences {
+    input: GraphEditorRepresentation, mapping: Map<String, String>
+    output: GraphEditorRepresentation
+
+    ensures:
+        updated_graph = DomainApplyIdMapping(graph, mapping)
+        updated_graph
+}
+
+
+-- Strip secrets from a graph
+rule DomainStripSecrets {
+    input: GraphEditorRepresentation
+    output: GraphEditorRepresentation
+
+    ensures:
+        cleaned = RemoveSecretOptions(graph)
+        cleaned
+}
+
+
+-- Resolve ID conflicts during import
+rule DomainResolveSubgraphIdConflicts {
+    input: List<RepositorySubGraph>
+    output: Map<String, String>  -- old_id -> new_id mapping
+
+    ensures:
+        mapping = Map<String, String>
+        for sg in input:
+            new_id = DomainResolveUniqueId(sg.id, DomainSubgraphExists)
+            new_name = DomainResolveUniqueName(sg.name, DomainGetAllSubgraphNames)
+            if new_id != sg.id:
+                mapping.put(sg.id, new_id)
+            DomainRenameSubgraph(sg, new_id, new_name)
+        mapping
+}
+
+
+-- ============================================================================
+-- RESULT TYPES (Domain-level)
+-- ============================================================================
+
+
+entity DomainSaveAppResult {
+    app: RepositoryApp?
+    error: String?
+    action: "created" | "updated" | "error"
+}
+
+
+entity DomainSaveSubgraphResult {
+    sub_graph: RepositorySubGraph?
+    error: String?
+    action: "created" | "updated" | "error"
+}
+
+
+entity DomainDeleteAppResult {
+    success: Boolean
+    action: "deleted" | "not_found"
+}
+
+
+entity DomainDeleteSubgraphResult {
+    success: Boolean
+    action: "deleted" | "not_found"
+}
+
+
+entity DomainListAppsResult {
+    apps: List<RepositoryApp>
+}
+
+
+entity DomainListSubgraphsResult {
+    sub_graphs: List<RepositorySubGraph>
+}
+
+
+entity DomainExportAppResult {
+    export: AppExport
+}
+
+
+entity DomainImportAppResult {
+    app: RepositoryApp
+}
+
+
+entity DomainExportSubgraphResult {
+    export: SubGraphExport
+}
+
+
+entity DomainImportSubgraphResult {
+    sub_graph: RepositorySubGraph
+}
+
+
+entity LoadAppResult {
+    app: RepositoryApp?
+}
+
+
+entity LoadSubgraphResult {
+    sub_graph: RepositorySubGraph?
+}

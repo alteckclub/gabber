@@ -1,0 +1,603 @@
+-- allium: 2
+
+use "./core.allium" as core
+use "./repository_domain.allium" as domain
+
+
+-- ============================================================================
+-- REPOSITORY PERSISTENCE SPECIFICATION
+-- ============================================================================
+-- This module contains PERSISTENCE RULES for app and subgraph storage.
+-- It describes HOW data is stored, not the business logic.
+--
+-- Separation of Concerns:
+-- - Domain rules (repository_domain.allium): Business logic, validation
+-- - Persistence rules (this file): File I/O, storage operations
+--
+-- The persistence layer delegates to domain rules for business logic,
+-- then handles the mechanical act of reading/writing to storage.
+
+
+-- ============================================================================
+-- PERSISTENCE SERVER
+-- ============================================================================
+
+
+entity RepositoryServer {
+    port: Integer               -- HTTP server port (default: 8001)
+    file_path: String           -- Root directory for repository data
+    app: HTTPApplication
+    secret_provider: SecretProvider
+}
+
+
+-- ============================================================================
+-- PERSISTENCE HELPER FUNCTIONS
+-- ============================================================================
+
+
+-- Load app from file storage
+rule PersistenceLoadApp {
+    input: String (app_id)
+    output: domain/RepositoryApp?
+
+    ensures:
+        file_path = PersistenceBuildAppFilePath(request)
+        if PersistenceFileExists(file_path):
+            content = PersistenceReadFile(file_path)
+            domain/RepositoryApp.parse_json(content)
+        if not PersistenceFileExists(file_path):
+            null
+}
+
+
+-- Save app to file storage
+rule PersistenceSaveApp {
+    input: domain/RepositoryApp
+    output: Void
+
+    ensures:
+        file_path = PersistenceBuildAppFilePath(request)
+        json = request.to_json()
+        PersistenceWriteFile(file_path, json)
+}
+
+
+-- Delete app from file storage
+rule PersistenceDeleteApp {
+    input: String (app_id)
+    output: Boolean
+
+    ensures:
+        file_path = PersistenceBuildAppFilePath(request)
+        if PersistenceFileExists(file_path):
+            PersistenceDeleteFile(file_path)
+            true
+        if not PersistenceFileExists(file_path):
+            false
+}
+
+
+-- Load subgraph from file storage
+rule PersistenceLoadSubgraph {
+    input: String (subgraph_id)
+    output: domain/RepositorySubGraph?
+
+    ensures:
+        file_path = PersistenceBuildSubgraphFilePath(request)
+        if PersistenceFileExists(file_path):
+            content = PersistenceReadFile(file_path)
+            domain/RepositorySubGraph.parse_json(content)
+        if not PersistenceFileExists(file_path):
+            null
+}
+
+
+-- Save subgraph to file storage
+rule PersistenceSaveSubgraph {
+    input: domain/RepositorySubGraph
+    output: Void
+
+    ensures:
+        file_path = PersistenceBuildSubgraphFilePath(request)
+        json = request.to_json()
+        PersistenceWriteFile(file_path, json)
+}
+
+
+-- Delete subgraph from file storage
+rule PersistenceDeleteSubgraph {
+    input: String (subgraph_id)
+    output: Boolean
+
+    ensures:
+        file_path = PersistenceBuildSubgraphFilePath(request)
+        if PersistenceFileExists(file_path):
+            PersistenceDeleteFile(file_path)
+            true
+        if not PersistenceFileExists(file_path):
+            false
+}
+
+
+-- List all app files
+rule PersistenceListAppFiles {
+    input: Void
+    output: List<String>
+
+    ensures:
+        app_dir = PersistenceBuildAppDirPath()
+        files = PersistenceListDirectory(app_dir)
+        files
+}
+
+
+-- List all subgraph files
+rule PersistenceListSubgraphFiles {
+    input: Void
+    output: List<String>
+
+    ensures:
+        subgraph_dir = PersistenceBuildSubgraphDirPath()
+        files = PersistenceListDirectory(subgraph_dir)
+        files
+}
+
+
+-- ============================================================================
+-- FILE PATH BUILDERS
+-- ============================================================================
+
+
+-- Build file path for an app
+rule PersistenceBuildAppFilePath {
+    input: String (app_id)
+    output: String
+
+    ensures:
+        server = RepositoryServer
+        file_path = server.file_path + "/app/" + request + ".json"
+        file_path
+}
+
+
+-- Build file path for a subgraph
+rule PersistenceBuildSubgraphFilePath {
+    input: String (subgraph_id)
+    output: String
+
+    ensures:
+        server = RepositoryServer
+        file_path = server.file_path + "/sub_graph/" + request + ".json"
+        file_path
+}
+
+
+-- Build app directory path
+rule PersistenceBuildAppDirPath {
+    input: Void
+    output: String
+
+    ensures:
+        server = RepositoryServer
+        app_dir = server.file_path + "/app"
+        app_dir
+}
+
+
+-- Build subgraph directory path
+rule PersistenceBuildSubgraphDirPath {
+    input: Void
+    output: String
+
+    ensures:
+        server = RepositoryServer
+        subgraph_dir = server.file_path + "/sub_graph"
+        subgraph_dir
+}
+
+
+-- ============================================================================
+-- FILE SYSTEM OPERATIONS
+-- ============================================================================
+
+
+-- Check if a file exists
+rule PersistenceFileExists {
+    input: String (file_path)
+    output: Boolean
+
+    ensures:
+        file_exists(request)
+}
+
+
+-- Read file contents
+rule PersistenceReadFile {
+    input: String (file_path)
+    output: String
+
+    ensures:
+        read_file(request)
+}
+
+
+rule PersistenceWriteFile {
+    when: PersistenceWriteFile(file_path: String, content: String)
+
+    ensures:
+        write_file(file_path, content)
+}
+
+
+-- Delete a file
+rule PersistenceDeleteFile {
+    input: String (file_path)
+    output: Void
+
+    ensures:
+        delete_file(request)
+}
+
+
+-- List directory contents
+rule PersistenceListDirectory {
+    input: String (directory_path)
+    output: List<String>
+
+    ensures:
+        list_directory(request)
+}
+
+
+-- ============================================================================
+-- SECRET PERSISTENCE
+-- ============================================================================
+
+
+-- Read all secrets
+rule PersistenceReadSecrets {
+    input: Void
+    output: Map<String, String>
+
+    ensures:
+        server = RepositoryServer
+        secrets = server.secret_provider.read_secrets()
+        secrets
+}
+
+
+-- Write all secrets
+rule PersistenceWriteSecrets {
+    input: Map<String, String> (secrets)
+    output: Void
+
+    ensures:
+        server = RepositoryServer
+        server.secret_provider.write_secrets(request)
+}
+
+
+-- List secret names
+rule PersistenceListSecrets {
+    input: Void
+    output: List<String>
+
+    ensures:
+        server = RepositoryServer
+        secrets = server.secret_provider.list_secrets()
+        secrets
+}
+
+
+-- ============================================================================
+-- HTTP ENDPOINT RULES (Orchestrate domain + persistence)
+-- ============================================================================
+
+
+-- List apps endpoint
+rule AppListApps {
+    when: GET /app/list
+
+    ensures:
+        files = PersistenceListAppFiles()
+        apps = Set<domain/RepositoryApp>
+        for file in files:
+            if file.endswith(".json"):
+                app = PersistenceLoadApp(extract_id_from_filename(file))
+                if app != null:
+                    apps.add(app)
+        sorted_apps = sort_by_created_at_desc(apps)
+        ListAppsResponse.created(apps: sorted_apps)
+}
+
+
+-- Get app endpoint
+rule AppGetApp {
+    when: GET /app/{id}
+
+    requires: length(id) = 36
+
+    ensures:
+        app = PersistenceLoadApp(id)
+        if app != null:
+            GetAppResponse.created(app: app)
+        if app = null:
+            HTTPResponse.created(status: 404)
+}
+
+
+-- Save app endpoint
+rule AppSaveApp {
+    when: POST /app with SaveAppRequest
+
+    ensures:
+        if request.id != null:
+            existing_app = PersistenceLoadApp(request.id)
+            if existing_app != null:
+                existing_app.name = request.name
+                existing_app.graph = request.graph
+                existing_app.updated_at = now()
+                PersistenceSaveApp(existing_app)
+                SaveAppResponse.created(app: existing_app)
+            if existing_app = null:
+                HTTPResponse.created(status: 404)
+        if request.id = null:
+            new_app = domain/RepositoryApp.created(
+                id: generate_uuid(),
+                name: request.name,
+                graph: request.graph,
+                created_at: now(),
+                updated_at: now()
+            )
+            PersistenceSaveApp(new_app)
+            SaveAppResponse.created(app: new_app)
+}
+
+
+-- Delete app endpoint
+rule AppDeleteApp {
+    when: DELETE /app/{id}
+
+    ensures:
+        if PersistenceDeleteApp(id):
+            HTTPResponse.created(status: 200)
+        if not PersistenceDeleteApp(id):
+            HTTPResponse.created(status: 404)
+}
+
+
+-- List subgraphs endpoint
+rule SubgraphListSubgraphs {
+    when: GET /sub_graph/list
+
+    ensures:
+        files = PersistenceListSubgraphFiles()
+        subgraphs = Set<domain/RepositorySubGraph>
+        for file in files:
+            if file.endswith(".json"):
+                sg = PersistenceLoadSubgraph(extract_id_from_filename(file))
+                if sg != null:
+                    subgraphs.add(sg)
+        sorted_subgraphs = sort_by_created_at_desc(subgraphs)
+        ListSubgraphsResponse.created(sub_graphs: sorted_subgraphs)
+}
+
+
+-- Get subgraph endpoint
+rule SubgraphGetSubgraph {
+    when: GET /sub_graph/{id}
+
+    requires: length(id) = 36
+
+    ensures:
+        sg = PersistenceLoadSubgraph(id)
+        if sg != null:
+            GetSubgraphResponse.created(sub_graph: sg)
+        if sg = null:
+            HTTPResponse.created(status: 404)
+}
+
+
+-- Save subgraph endpoint
+rule SubgraphSaveSubgraph {
+    when: POST /sub_graph with SaveSubgraphRequest
+
+    ensures:
+        if request.id != null:
+            existing_sg = PersistenceLoadSubgraph(request.id)
+            if existing_sg != null:
+                existing_sg.name = request.name
+                existing_sg.graph = request.graph
+                existing_sg.updated_at = now()
+                PersistenceSaveSubgraph(existing_sg)
+                SaveSubgraphResponse.created(sub_graph: existing_sg)
+            if existing_sg = null:
+                HTTPResponse.created(status: 404)
+        if request.id = null:
+            new_sg = domain/RepositorySubGraph.created(
+                id: generate_uuid(),
+                name: request.name,
+                graph: request.graph,
+                created_at: now(),
+                updated_at: now()
+            )
+            PersistenceSaveSubgraph(new_sg)
+            SaveSubgraphResponse.created(sub_graph: new_sg)
+}
+
+
+-- Delete subgraph endpoint
+rule SubgraphDeleteSubgraph {
+    when: DELETE /sub_graph/{id}
+
+    ensures:
+        if PersistenceDeleteSubgraph(id):
+            HTTPResponse.created(status: 200)
+        if not PersistenceDeleteSubgraph(id):
+            HTTPResponse.created(status: 404)
+}
+
+
+-- ============================================================================
+-- REQUEST/RESPONSE SCHEMAS
+-- ============================================================================
+
+
+-- Request types
+entity SaveSubgraphRequest {
+    type: String
+    id: String?                 -- Optional for updates
+    name: String
+    graph: GraphEditorRepresentation
+}
+
+
+entity SaveAppRequest {
+    type: String
+    id: String?                 -- Optional for updates
+    name: String
+    graph: GraphEditorRepresentation
+}
+
+
+entity CreateAppRunRequest {
+    type: String
+    run_id: String              -- Room name/ID
+    graph: GraphEditorRepresentation
+}
+
+
+entity DebugConnectionRequest {
+    type: String
+    run_id: String
+}
+
+
+entity MCPProxyConnectionRequest {
+    type: String
+    run_id: String
+}
+
+
+entity ImportAppRequest {
+    type: String
+    export: domain/AppExport
+}
+
+
+entity ImportSubGraphRequest {
+    type: String
+    export: domain/SubGraphExport
+}
+
+
+entity AddSecretRequest {
+    type: String
+    name: String
+    value: String
+}
+
+
+entity UpdateSecretRequest {
+    type: String
+    value: String
+}
+
+
+-- Response types
+entity GetAppResponse {
+    type: String
+    app: domain/RepositoryApp
+}
+
+
+entity SaveAppResponse {
+    type: String
+    app: domain/RepositoryApp
+}
+
+
+entity ListAppsResponse {
+    type: String
+    apps: List<domain/RepositoryApp>
+}
+
+
+entity GetSubgraphResponse {
+    type: String
+    sub_graph: domain/RepositorySubGraph
+}
+
+
+entity SaveSubgraphResponse {
+    type: String
+    sub_graph: domain/RepositorySubGraph
+}
+
+
+entity ListSubgraphsResponse {
+    type: String
+    sub_graphs: List<domain/RepositorySubGraph>
+}
+
+
+entity CreateAppRunResponse {
+    type: String
+    connection_details: domain/AppRunConnectionDetails
+}
+
+
+entity DebugConnectionResponse {
+    type: String
+    connection_details: domain/AppRunConnectionDetails
+    graph: GraphEditorRepresentation
+}
+
+
+entity MCPProxyConnectionResponse {
+    type: String
+    connection_details: domain/AppRunConnectionDetails
+}
+
+
+entity ExportAppResponse {
+    type: String
+    export: domain/AppExport
+}
+
+
+entity ExportSubGraphResponse {
+    type: String
+    export: domain/SubGraphExport
+}
+
+
+entity ListSecretsResponse {
+    type: String
+    secrets: List<domain/PublicSecret>
+}
+
+
+entity AddSecretResponse {
+    type: String
+    success: Boolean
+}
+
+
+entity UpdateSecretResponse {
+    type: String
+    success: Boolean
+}
+
+
+entity DeleteSecretResponse {
+    type: String
+    success: Boolean
+}
+
+
+entity ErrorResponse {
+    status: String
+    message: String
+}

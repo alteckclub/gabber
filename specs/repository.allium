@@ -12,6 +12,24 @@ use "./core.allium" as core
 --   - Engine graph execution (see engine.allium)
 --   - STT/TTS services (see services.allium)
 
+
+
+
+-- ============================================================================
+-- MODULE DECOMPOSITION
+-- ============================================================================
+-- The repository spec has been split into:
+-- - repository_domain.allium: Pure domain rules (business logic)
+-- - repository_persistence.allium: File I/O and storage operations
+--
+-- This separation improves testability and clarity by:
+-- 1. Domain rules describe WHAT without implementation details
+-- 2. Persistence rules describe HOW data is stored
+-- 3. Domain rules can be tested without file system
+-- 4. Storage backend can be swapped without changing domain logic
+--
+-- See repository_domain.allium and repository_persistence.allium for details
+
 -- ============================================================================
 -- SERVICE ARCHITECTURE
 -- ============================================================================
