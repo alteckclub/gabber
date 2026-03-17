@@ -200,6 +200,20 @@ entity EnumSwitch {
     outputs: Set<StatelessSourcePad>
 }
 
+
+-- Enum-based switching for property values
+entity EnumSwitchProperty {
+    sink: PropertySinkPad
+    source: PropertySourcePad
+    values: Set<PropertySinkPad>
+}
+
+-- Enum-based switching for trigger signals
+entity EnumSwitchTrigger {
+    sink: StatelessSinkPad
+    outputs: Set<StatelessSourcePad>
+}
+
 -- ============================================================================
 -- STATE MACHINE NODE
 -- ============================================================================
@@ -517,6 +531,20 @@ entity VAD {
     threshold: PropertySinkPad
 }
 
+-- Silero VAD - advanced voice activity detection with speech state tracking
+entity SileroVAD {
+    audio: StatelessSinkPad
+    audio_clip: StatelessSourcePad
+    speech_started_trigger: StatelessSourcePad
+    speech_ended_trigger: StatelessSourcePad
+    continued_speech_trigger: StatelessSourcePad
+    vad_threshold: PropertySinkPad
+    silence_duration_ms: PropertySinkPad
+    speech_duration_ms: PropertySinkPad
+    pre_speech_duration_ms: PropertySinkPad
+}
+
+
 -- ============================================================================
 -- TTS NODES (Text-to-Speech)
 -- ============================================================================
@@ -617,6 +645,20 @@ entity LocalLLM {
     response: StatelessSourcePad
     temperature: PropertySinkPad
 }
+
+-- Manages conversation context for language models with dynamic pruning
+entity LLMContext {
+    num_inserts: PropertySinkPad
+    insert: List<StatelessSinkPad>
+    new_user_message: StatelessSourcePad
+    max_non_system_messages: PropertySinkPad
+    max_videos: PropertySinkPad
+    max_audios: PropertySinkPad
+    max_images: PropertySinkPad
+    system_message: PropertySinkPad
+    source: PropertySourcePad
+}
+
 
 -- ============================================================================
 -- LOCAL NODES
