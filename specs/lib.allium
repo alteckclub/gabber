@@ -154,7 +154,9 @@ entity DeepgramSTTConfig {
 -- the Kyutai platform with exponential moving average for confidence.
 entity KyutaiSTTConfig {
     api_key: String
-    model: String
+    -- Kyutai-specific configuration
+    port: Integer
+    sample_rate: Integer = 24000
 }
 
 -- Assembly AI STT backend configuration. Provides transcription through
@@ -167,7 +169,9 @@ entity AssemblySTTConfig {
 -- Gabber STT backend configuration. Native Gabber implementation for
 -- speech-to-text with custom models optimized for Gabber's audio pipeline.
 entity GabberSTTConfig {
-    model: String
+    -- Gabber STT-specific configuration
+    url: String = "ws://localhost:7004"
+    viseme_mode: Boolean = False
 }
 
 -- ============================================================================
@@ -222,6 +226,9 @@ entity ElevenLabsTTSConfig {
     similarity_boost: Float
     style: Float
     speaker_boost: Boolean
+    -- Audio output format
+    sample_rate: Integer = 24000
+    encoding: String = "pcm_s16le"
 }
 
 -- OpenAI TTS backend configuration. Uses OpenAI's TTS models
@@ -229,12 +236,12 @@ entity ElevenLabsTTSConfig {
 entity OpenAITTSConfig {
     api_key: String
     model: String
-    voice: String
-
-    -- Audio format
-    response_format: String = "pcm"
-    speed: Float = 1.0
+    voice_id: String
+    -- Audio output format
+    sample_rate: Integer = 24000
+    encoding: String = "pcm_s16le"
 }
+
 
 -- MiniMax TTS backend configuration. Provides text-to-speech through
 -- MiniMax's models with multi-language support and emotional synthesis.
@@ -340,6 +347,75 @@ config {
 -- OPEN QUESTIONS
 -- ============================================================================
 
-open question "STT backends: Should Kyutai, Assembly, and Gabber STT configurations be documented in detail?"
-open question "TTS backends: Should ElevenLabs, OpenAI, MiniMax, and Gabber TTS configurations be documented in detail?"
-open question "Video processing: Should additional video encoders (WebM, etc.) be supported?"
+open question "STT backends: Kyutai, Assembly, and Gabber STT configurations now documented with additional fields (port, url, viseme_mode)"
+open question "TTS backends: ElevenLabs, OpenAI, MiniMax, and Gabber TTS configurations now documented with additional fields (sample_rate, encoding, voice_id)"
+open question "Video processing: Additional video encoders (WebM, etc.) could be added as needed for different use cases"
+
+
+-- ============================================================================
+-- EXTERNAL TYPES (from gabber.core.types.runtime and other libraries)
+-- ============================================================================
+
+-- Base STT interface (abstract class from implementation)
+external entity STT {}
+
+-- Base TTS interface (protocol from implementation)
+external entity TTS {}
+
+-- Multiplex WebSocket TTS base class
+external entity MultiplexWebSocketTTS {}
+
+-- Gabber STT message types
+external entity GabberSTT_Request {}
+external entity GabberSTT_RequestPayload {}
+external entity GabberSTT_Response {}
+external entity GabberSTT_ResponsePayload {}
+
+-- Kyutai STT message types
+external entity KyutaiSTT_Message {}
+
+-- AudioWindow for buffering in STT backends
+external entity AudioWindow {}
+
+-- ExponentialMovingAverage for Kyutai endpointing
+external entity ExponentialMovingAverage {}
+
+-- Core runtime types
+external entity ContextMessage {}
+external entity ContextMessageContentItem {}
+external entity ContextMessageContentItem_Text {}
+external entity ContextMessageContentItem_Image {}
+external entity ContextMessageContentItem_Audio {}
+external entity ContextMessageContentItem_Video {}
+external entity ContextMessageContent_ChoiceDelta {}
+external entity ContextMessageRoleEnum {}
+
+external entity ToolDefinition {}
+
+external entity AudioClip {}
+
+external entity AudioFrame {}
+
+external entity AudioFrameData {}
+
+external entity VideoFrame {}
+
+external entity VideoClip {}
+
+-- Utility types
+external entity Json {}
+external entity Bytes {}
+external entity Timestamp {}
+external entity Logger {}
+external entity asyncio_Task {}
+external entity Any {}
+external entity MapEntry {}
+external entity Fraction {}
+external entity numpy_ndarray {}
+external entity dict {}
+external entity Set {}
+external entity List {}
+external entity Float {}
+external entity Integer {}
+external entity String {}
+external entity Boolean {}
