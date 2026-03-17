@@ -244,9 +244,7 @@ entity OpenLipSyncInference {
     sample_rate: Integer
 }
 
-enum Viseme {
-    SILENCE | PP | FF | TH | DD | KK | CH | SS | NN | RR | AA | E | IH | OH | OU
-}
+-- Viseme enum defined in core.allium (VisemeType)
 
 entity LipSyncResult {
     max_viseme_prob: VisemeProbability

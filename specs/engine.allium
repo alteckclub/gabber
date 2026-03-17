@@ -76,13 +76,9 @@ entity ToolDefinition {
 
 enum ToolDestination { Webhook | Client }
 
--- Lip-sync animation data
+-- Lip-sync animation data (Viseme and VisemeType defined in core.allium)
 entity Viseme {
     value: VisemeType
-}
-
-enum VisemeType {
-    SILENCE | PP | FF | TH | DD | kk | CH | SS | nn | RR | aa | E | ih | oh | ou
 }
 
 -- ============================================================================

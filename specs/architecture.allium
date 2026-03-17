@@ -18,111 +18,17 @@ use "./core.allium" as core
 
 -- ============================================================================
 
--- An App is the highest level construct in Gabber - a graph of nodes and pads
-entity App {
-    id: String
-    name: String
-    description: String?
-    graph: Graph
-    created_at: Timestamp
-    updated_at: Timestamp
-    owner: User?
+-- App entity defined in core.allium
 
-    -- Apps can be shared publicly or kept private
-    visibility: public | private
-}
+-- SubGraph entity defined in core.allium
 
--- A SubGraph is an embeddable collection of nodes, similar to App but designed
--- to be used as a node within other graphs
-entity SubGraph {
-    id: String
-    name: String
-    description: String?
-    graph: Graph
-    created_at: Timestamp
-    updated_at: Timestamp
-    author: User?
+-- NodeState entity defined in core.allium
 
-    -- Proxy nodes define entry/exit points for embedding
-    proxy_inputs: List<ProxyNode>
-    proxy_outputs: List<ProxyNode>
+-- Pad entity defined in core.allium
 
-    visibility: public | private
-}
+-- Connection entity defined in core.allium
 
--- Graph is the structural container for nodes and their connections
-entity Graph {
-    id: String
-    nodes: Set<Node>
-    connections: Set<Connection>
-
-    -- State machines can be embedded within graphs
-    state_machines: Set<StateMachine>
-}
-
--- Node is a functional building block that performs specific operations
-entity Node {
-    id: String
-    type: NodeType
-    label: String?
-    position: GraphPosition
-
-    -- Nodes have typed pads for data flow
-    input_pads: Set<Pad>
-    output_pads: Set<Pad>
-
-    -- Configurable properties affect node behavior
-    properties: Map<String, PropertyValue>
-
-    state: NodeState
-}
-
-entity NodeState {
-    active: Boolean
-    error_message: String?
-    last_run_at: Timestamp?
-}
-
-entity Pad {
-    id: String
-    name: String
-    type: PadType
-    mode: property | stateless
-    direction: sink | source
-}
-
--- Connection links pads between nodes
-entity Connection {
-    id: String
-    source_node: Node
-    source_pad: Pad
-    target_node: Node
-    target_pad: Pad
-}
-
--- NodeType categorizes nodes by their function
-entity NodeType {
-    -- Media ingestion nodes
-    media_source: MediaSourceType?
-
-    -- Processing nodes
-    transcriber: TranscriberType?
-    analyzer: AnalyzerType?
-    processor: ProcessorType?
-
-    -- Output nodes
-    speaker: SpeakerType?
-    action: ActionType?
-
-    -- Control nodes
-    state_machine: StateMachineType?
-    conditional: ConditionalType?
-
-    -- Integration nodes
-    api_call: ApiCallType?
-    llm: LlmType?
-    mcp_server: McpServerType?
-}
+-- NodeType entity defined in core.allium
 
 -- StateMachine defines control flow through states and transitions
 entity StateMachine {

@@ -259,22 +259,25 @@ entity App {
 
 -- Viseme types for lip-sync animation
 -- Unified enum combining variants from engine and nodes specs
+-- Viseme types for lip-sync animation
+-- Unified enum combining variants from engine and nodes specs
+-- Uses phoneme-based naming convention (P, B, M for bilabial stops, etc.)
 enum VisemeType {
-    SILENCE
-    P
-    B
-    M
-    O
-    U
-    F
-    V
-    T_D_N
-    S_Z
-    TH
-    SH
-    K_G
-    L
-    R
+    SILENCE          -- No speech / pause
+    P                -- Bilabial stop (p)
+    B                -- Bilabial stop (b)
+    M                -- Bilabial nasal (m)
+    O                -- Rounded vowel (o)
+    U                -- Rounded vowel (u)
+    F                -- Labiodental fricative (f)
+    V                -- Labiodental fricative (v)
+    T_D_N            -- Alveolar stops/nasal (t, d, n)
+    S_Z              -- Alveolar fricatives (s, z)
+    TH               -- Dental fricative (th)
+    SH               -- Palato-alveolar fricative (sh)
+    K_G              -- Velar stops (k, g)
+    L                -- Alveolar lateral (l)
+    R                -- Alveolar approximant (r)
 }
 
 -- Lip-sync animation data
