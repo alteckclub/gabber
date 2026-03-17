@@ -1,0 +1,1249 @@
+-- allium: 2
+
+-- Gabber Frontend Components Specification
+-- Formal specification of editor UI component behavior
+
+-- Scope: Frontend editor components and their interactions
+-- Includes: Flow editor, state machine editor, app edit, subgraph management,
+--           tool configuration, debug components
+-- Excludes:
+--   - Backend engine execution (see engine.allium)
+--   - Node type definitions (see nodes.allium)
+--   - Editor WebSocket protocol (see editor.allium)
+
+-- ============================================================================
+-- DOMAIN ENTITIES
+-- ============================================================================
+
+-- Graph representation in the editor
+entity FlowGraph {
+    nodes: Set<NodeInstance>
+    connections: Set<Connection>
+    portals: Set<Portal>
+    selection: Set<NodeInstance>
+    viewport: ViewportState
+}
+
+-- A node instance in the flow graph
+entity NodeInstance {
+    id: String
+    node_type: String
+    position: Point
+    dimensions: Point?
+    pads: Set<PadInstance>
+    metadata: NodeMetadata
+    properties: Any?
+}
+
+-- A pad (connection point) on a node
+entity PadInstance {
+    id: String
+    node_id: String
+    pad_type: String
+    direction: Direction
+    value: ClientPadValue?
+    connections: Set<Connection>
+}
+
+-- A connection between two pads
+entity Connection {
+    source_node: String
+    source_pad: String
+    target_node: String
+    target_pad: String
+}
+
+-- Portal for cross-graph references
+entity Portal {
+    id: String
+    source_node: String
+    source_pad: String
+    source_position: Point
+    ends: Set<PortalEnd>
+}
+
+-- Portal end pointing to internal pads
+entity PortalEnd {
+    id: String
+    portal_id: String
+    position: Point
+    next_pads: Set<PadReference>
+}
+
+-- Reference to a pad
+entity PadReference {
+    node: String
+    pad: String
+}
+
+-- Viewport state for the graph canvas
+entity ViewportState {
+    x: Float
+    y: Float
+    zoom: Float
+}
+
+-- Point in 2D space
+value Point { x: Float, y: Float }
+
+-- Direction of a pad
+enum Direction {
+    Sink
+    Source
+}
+
+-- Client-side pad value types
+value ClientPadValue {
+    type: String
+    value: Any
+}
+
+-- ============================================================================
+-- STATE MACHINE DOMAIN
+-- ============================================================================
+
+-- State machine configuration stored in StateMachine node
+entity StateMachineConfiguration {
+    states: Set<StateMachineState>
+    transitions: Set<StateMachineTransition>
+    entry_state: String?
+    entry_node_position: Point?
+    special_any_state_position: Point?
+}
+
+-- A state in the state machine
+entity StateMachineState {
+    id: String
+    name: String
+    position: Point
+}
+
+-- A transition between states
+entity StateMachineTransition {
+    id: String
+    from_state: String
+    to_state: String
+    conditions: Set<StateMachineTransitionCondition>
+}
+
+-- A condition on a transition
+entity StateMachineTransitionCondition {
+    parameter_name: String?
+    operator: String?
+    value: Any?
+}
+
+-- ============================================================================
+-- LIBRARY AND DISCOVERY
+-- ============================================================================
+
+-- Library item available for insertion
+entity LibraryItem {
+    type: String
+    name: String
+    description: String
+    metadata: NodeMetadata
+    pads: Set<PadDefinition>
+}
+
+-- Eligible item for connection from a source pad
+entity EligibleLibraryItem {
+    library_item: LibraryItem
+    pads: Set<PadDefinition>
+}
+
+-- Pad definition from library
+entity PadDefinition {
+    id: String
+    group: String
+    type: String
+    direction: String
+    allowed_types: Set<PadConstraint>?
+}
+
+-- Pad constraint defining allowed connection types
+entity PadConstraint {
+    type_name: String
+}
+
+-- ============================================================================
+-- EDIT OPERATIONS
+-- ============================================================================
+
+-- Edit operation for graph modification
+entity GraphEdit {
+    kind: String
+}
+
+-- Insert a new node
+variant InsertNode : GraphEdit {
+    id: String?
+    node_type: String
+    position: Point
+    dimensions: Point?
+}
+
+-- Remove a node
+variant RemoveNode : GraphEdit {
+    node_id: String
+}
+
+-- Update node properties
+variant UpdateNode : GraphEdit {
+    id: String
+    position: Point?
+    dimensions: Point?
+    new_id: String?
+}
+
+-- Connect two pads
+variant ConnectPad : GraphEdit {
+    node: String
+    pad: String
+    connected_node: String
+    connected_pad: String
+}
+
+-- Disconnect pads
+variant DisconnectPad : GraphEdit {
+    node: String
+    pad: String
+    connected_node: String
+    connected_pad: String
+}
+
+-- Update pad value
+variant UpdatePad : GraphEdit {
+    node: String
+    pad: String
+    value: ClientPadValue
+}
+
+-- Create a portal
+variant CreatePortal : GraphEdit {
+    source_node: String
+    source_pad: String
+    position: Point
+}
+
+-- Update portal end
+variant UpdatePortalEnd : GraphEdit {
+    portal_id: String
+    portal_end_id: String
+    next_pads: Set<PadReference>
+    position: Point
+}
+
+-- ============================================================================
+-- EXTERNAL STIMULI (User Actions)
+-- ============================================================================
+
+-- External events representing user actions
+entity UserSelectsEligibleItem {
+    item: EligibleLibraryItem
+    source_node: String
+    source_pad: String
+    position: Point
+}
+
+entity UserCreatesPortal {
+    source_node: String
+    source_pad: String
+    position: Point
+}
+
+entity UserConnectsPad {
+    source_node: String
+    source_pad: String
+    target_node: String
+    target_pad: String
+}
+
+entity UserRemovesNode {
+    node_id: String
+}
+
+entity UserUpdatesPad {
+    node_id: String
+    pad_id: String
+    new_value: ClientPadValue
+}
+
+entity UserQueriesEligibleItems {
+    source_node: String
+    source_pad: String
+}
+
+entity UserAddsState {
+    position: Point
+}
+
+entity UserAddsStateFromState {
+    source_state_id: String
+    position: Point
+}
+
+entity UserSetsEntryState {
+    target_state_id: String
+}
+
+entity UserUpdatesStateName {
+    state_id: String
+    new_name: String
+}
+
+entity UserDeletesState {
+    state_id: String
+}
+
+entity UserAddsTransition {
+    source_state_id: String
+    target_state_id: String
+}
+
+entity UserUpdatesTransitionConditions {
+    transition_id: String
+    new_conditions: Set<StateMachineTransitionCondition>
+}
+
+entity UserDeletesTransition {
+    transition_id: String
+}
+
+entity UserAddsParameter {}
+
+entity UserRemovesParameter {}
+
+entity UserDragsStateNode {
+    state_id: String
+    new_position: Point
+    dragging: Boolean
+}
+
+entity UserDragsEntryNode {
+    new_position: Point
+    dragging: Boolean
+}
+
+entity UserModifiesGraph {
+    edit: GraphEdit
+}
+
+entity UserSavesApp {}
+
+entity UserNavigatesAway {
+    destination: String
+}
+
+entity UserStartsApp {}
+
+entity UserStopsApp {}
+
+entity UserCreatesSubgraph {
+    name: String
+}
+
+entity UserEmbedsSubgraph {
+    subgraph_id: String
+    position: Point
+}
+
+entity UserOpensSubgraph {
+    subgraph_id: String
+}
+
+entity UserUpdatesSubgraphName {
+    subgraph_id: String
+    new_name: String
+}
+
+entity UserDeletesSubgraph {
+    subgraph_id: String
+}
+
+entity UserAddsMCPServer {
+    name: String
+    transport: String
+    config: Any
+}
+
+entity UserUpdatesMCPServer {
+    server_id: String
+    new_config: Any
+}
+
+entity UserDeletesMCPServer {
+    server_id: String
+}
+
+entity UserCreatesToolGroup {
+    name: String
+}
+
+entity UserAddsToolToGroup {
+    group_id: String
+    server_id: String
+    tool_name: String
+}
+
+entity UserRemovesToolFromGroup {
+    group_id: String
+    tool_index: Integer
+}
+
+entity UserSendsChatMessage {
+    content: String
+}
+
+entity UserClearsLogs {}
+
+-- ============================================================================
+-- MODULE: Flow Editor Behavior
+-- ============================================================================
+
+given {
+    graph: FlowGraph
+}
+
+-- User adds a node via QuickAddModal
+rule NodeInsertion {
+    when: UserSelectsEligibleItem(item, source_node, source_pad, position)
+
+    ensures:
+        let new_node_id = generate_id(item.name)
+        InsertNode.created(
+            id: new_node_id,
+            node_type: item.library_item.type,
+            position: position,
+        )
+    ensures: ConnectPad.created(
+        node: source_node,
+        pad: source_pad,
+        connected_node: new_node_id,
+        connected_pad: first(item.pads).id,
+    )
+}
+
+-- User creates a portal when no eligible items exist
+rule PortalCreation {
+    when: UserCreatesPortal(source_node, source_pad, position)
+
+    requires: count(EligibleLibraryItem) = 0
+
+    ensures: Portal.created(
+        id: generate_uuid(),
+        source_node: source_node,
+        source_pad: source_pad,
+        source_position: position,
+    )
+}
+
+-- User connects a pad to another pad
+rule PadConnection {
+    when: UserConnectsPad(source_node, source_pad, target_node, target_pad)
+
+    requires: ConnectionValid(source_node, source_pad, target_node, target_pad)
+
+    ensures: ConnectPad.created(
+        node: source_node,
+        pad: source_pad,
+        connected_node: target_node,
+        connected_pad: target_pad,
+    )
+}
+
+-- User removes a node
+rule NodeRemoval {
+    when: UserRemovesNode(node_id)
+
+    requires: count(NodeInstance where id = node_id) > 0
+
+    ensures:
+        for conn in Connection where conn.source_node = node_id or conn.target_node = node_id:
+            not exists conn
+        for n in NodeInstance where n.id = node_id:
+            not exists n
+}
+
+-- User updates pad value
+rule PadValueUpdate {
+    when: UserUpdatesPad(node_id, pad_id, new_value)
+
+    requires: count(PadInstance where node_id = node_id and id = pad_id) > 0
+
+    ensures:
+        for p in PadInstance where p.node_id = node_id and p.id = pad_id:
+            p.value = new_value
+}
+
+-- Query eligible items for auto-complete
+rule EligibleItemsQuery {
+    when: UserQueriesEligibleItems(source_node, source_pad)
+
+    ensures:
+        let eligible = filter_eligible_items(source_node, source_pad)
+        EligibleLibraryItem returned where count(eligible) >= 0
+}
+
+-- ============================================================================
+-- MODULE: State Machine Editor Behavior
+-- ============================================================================
+
+given {
+    sm_config: StateMachineConfiguration
+    node_id: String
+}
+
+-- User adds a new state
+rule StateAddition {
+    when: UserAddsState(position)
+
+    ensures:
+        let new_state = StateMachineState.created(
+            id: generate_uuid(),
+            name: "New State",
+            position: position,
+        )
+        sm_config.states = sm_config.states + {new_state}
+}
+
+-- User adds a state and transition from existing state
+rule StateAndTransitionAddition {
+    when: UserAddsStateFromState(source_state_id, position)
+
+    requires: count(StateMachineState where id = source_state_id) > 0
+
+    ensures:
+        let new_state = StateMachineState.created(
+            id: generate_uuid(),
+            name: "New State",
+            position: position,
+        )
+        sm_config.states = sm_config.states + {new_state}
+    ensures:
+        let new_transition = StateMachineTransition.created(
+            id: generate_uuid(),
+            from_state: source_state_id,
+            to_state: new_state.id,
+            conditions: {},
+        )
+        sm_config.transitions = sm_config.transitions + {new_transition}
+}
+
+-- User adds entry transition
+rule EntryTransitionAddition {
+    when: UserSetsEntryState(target_state_id)
+
+    requires: count(StateMachineState where id = target_state_id) > 0
+
+    ensures: sm_config.entry_state = target_state_id
+}
+
+-- User updates state name
+rule StateNameUpdate {
+    when: UserUpdatesStateName(state_id, new_name)
+
+    requires: count(StateMachineState where id = state_id) > 0
+
+    ensures:
+        for s in StateMachineState where s.id = state_id:
+            s.name = new_name
+}
+
+-- User deletes a state
+rule StateDeletion {
+    when: UserDeletesState(state_id)
+
+    requires: count(StateMachineState where id = state_id) > 0
+
+    ensures:
+        for t in StateMachineTransition where t.from_state = state_id or t.to_state = state_id:
+            not exists t
+        for s in StateMachineState where s.id = state_id:
+            not exists s
+}
+
+-- User adds a transition between states
+rule TransitionAddition {
+    when: UserAddsTransition(source_state_id, target_state_id)
+
+    requires: count(StateMachineState where id = source_state_id) > 0
+    requires: count(StateMachineState where id = target_state_id) > 0
+    requires: source_state_id != target_state_id
+
+    ensures:
+        let new_transition = StateMachineTransition.created(
+            id: generate_uuid(),
+            from_state: source_state_id,
+            to_state: target_state_id,
+            conditions: {},
+        )
+        sm_config.transitions = sm_config.transitions + {new_transition}
+}
+
+-- User updates transition conditions
+rule TransitionConditionsUpdate {
+    when: UserUpdatesTransitionConditions(transition_id, new_conditions)
+
+    requires: count(StateMachineTransition where id = transition_id) > 0
+
+    ensures:
+        for t in StateMachineTransition where t.id = transition_id:
+            t.conditions = new_conditions
+}
+
+-- User deletes a transition
+rule TransitionDeletion {
+    when: UserDeletesTransition(transition_id)
+
+    requires: count(StateMachineTransition where id = transition_id) > 0
+
+    ensures:
+        for t in StateMachineTransition where t.id = transition_id:
+            not exists t
+}
+
+-- User adds a parameter to state machine
+rule ParameterAddition {
+    when: UserAddsParameter()
+
+    ensures: IncrementProperty(node_id, "num_parameters")
+    ensures: CreatePropertyPad(node_id, "parameter_name_<index>")
+    ensures: CreatePropertyPad(node_id, "parameter_value_<index>")
+}
+
+-- User removes a parameter from state machine
+rule ParameterRemoval {
+    when: UserRemovesParameter()
+
+    requires: Property(node_id, "num_parameters") > 0
+
+    ensures: DecrementProperty(node_id, "num_parameters")
+    ensures: RemovePropertyPad(node_id, "parameter_name_<last>")
+    ensures: RemovePropertyPad(node_id, "parameter_value_<last>")
+}
+
+-- User drags state node (visual update)
+rule StateNodeDrag {
+    when: UserDragsStateNode(state_id, new_position, dragging)
+
+    requires: count(StateMachineState where id = state_id) > 0
+
+    if dragging:
+        ensures: VisualUpdate(StateNode, state_id, position: new_position)
+    else:
+        ensures:
+            for s in StateMachineState where s.id = state_id:
+                s.position = new_position
+}
+
+-- User drags entry node
+rule EntryNodeDrag {
+    when: UserDragsEntryNode(new_position, dragging)
+
+    if dragging:
+        ensures: VisualUpdate(EntryNode, position: new_position)
+    else:
+        ensures: sm_config.entry_node_position = new_position
+}
+
+-- ============================================================================
+-- MODULE: App Edit Behavior
+-- ============================================================================
+
+given {
+    app: AppDefinition
+}
+
+entity AppDefinition {
+    id: String
+    name: String
+    graph: GraphEditorRepresentation
+    unsaved_changes: Boolean
+    is_running: Boolean
+}
+
+-- User modifies graph while app is not running
+rule AppGraphModification {
+    when: UserModifiesGraph(edit)
+
+    requires: not app.is_running
+
+    ensures: ApplyEdit(app.graph, edit)
+    ensures: app.unsaved_changes = true
+}
+
+-- User attempts to modify graph while app is running
+rule AppGraphModificationBlocked {
+    when: UserModifiesGraph(edit)
+
+    requires: app.is_running
+
+    ensures: EditRejected(reason: "Cannot modify while running")
+}
+
+-- User saves app
+rule AppSave {
+    when: UserSavesApp()
+
+    requires: app.unsaved_changes = true
+
+    ensures: PersistApp(app)
+    ensures: app.unsaved_changes = false
+}
+
+-- User navigates away with unsaved changes
+rule NavigationWithUnsavedChanges {
+    when: UserNavigatesAway(destination)
+
+    requires: app.unsaved_changes = true
+
+    ensures: ConfirmNavigation(message: "You have unsaved changes. Are you sure?")
+    if user_confirms:
+        ensures: AllowNavigation(destination)
+    else:
+        ensures: BlockNavigation()
+}
+
+-- User starts app execution
+rule AppExecutionStart {
+    when: UserStartsApp()
+
+    requires: app.unsaved_changes = false
+
+    ensures: app.is_running = true
+    ensures: StartExecution(app.graph)
+}
+
+-- User stops app execution
+rule AppExecutionStop {
+    when: UserStopsApp()
+
+    requires: app.is_running = true
+
+    ensures: app.is_running = false
+    ensures: StopExecution()
+}
+
+-- ============================================================================
+-- MODULE: Subgraph Management
+-- ============================================================================
+
+given {
+    workspace: Workspace
+}
+
+entity Workspace {
+    subgraphs: Set<SubgraphDefinition>
+    current_subgraph: SubgraphDefinition?
+}
+
+entity SubgraphDefinition {
+    id: String
+    name: String
+    graph: GraphEditorRepresentation
+}
+
+-- User creates a new subgraph
+rule SubgraphCreation {
+    when: UserCreatesSubgraph(name)
+
+    ensures:
+        let new_subgraph = SubgraphDefinition.created(
+            id: generate_uuid(),
+            name: name,
+            graph: empty_graph(),
+        )
+        workspace.subgraphs = workspace.subgraphs + {new_subgraph}
+}
+
+-- User embeds subgraph in current graph
+rule SubgraphEmbedding {
+    when: UserEmbedsSubgraph(subgraph_id, position)
+
+    requires: count(SubgraphDefinition where id = subgraph_id) > 0
+
+    ensures: InsertNode.created(
+        node_type: "SubGraph",
+        position: position,
+        properties: {subgraph_id: subgraph_id},
+    )
+}
+
+-- User opens subgraph for editing
+rule SubgraphNavigation {
+    when: UserOpensSubgraph(subgraph_id)
+
+    requires: count(SubgraphDefinition where id = subgraph_id) > 0
+
+    ensures:
+        for s in SubgraphDefinition where s.id = subgraph_id:
+            workspace.current_subgraph = s
+        LoadGraph(workspace.current_subgraph.graph)
+}
+
+-- User updates subgraph name
+rule SubgraphNameUpdate {
+    when: UserUpdatesSubgraphName(subgraph_id, new_name)
+
+    requires: count(SubgraphDefinition where id = subgraph_id) > 0
+
+    ensures:
+        for s in SubgraphDefinition where s.id = subgraph_id:
+            s.name = new_name
+}
+
+-- User deletes a subgraph
+rule SubgraphDeletion {
+    when: UserDeletesSubgraph(subgraph_id)
+
+    requires: count(SubgraphDefinition where id = subgraph_id) > 0
+    requires: count(NodeInstance where node_type = "SubGraph" and properties.subgraph_id = subgraph_id) = 0
+
+    ensures:
+        for s in SubgraphDefinition where s.id = subgraph_id:
+            not exists s
+}
+
+-- ============================================================================
+-- MODULE: Tool Configuration
+-- ============================================================================
+
+given {
+    tool_config: ToolConfiguration
+}
+
+entity ToolConfiguration {
+    mcp_servers: Set<MCPServerConfig>
+    tool_groups: Set<ToolGroupConfig>
+}
+
+entity MCPServerConfig {
+    id: String
+    name: String
+    transport: String
+    config: Any
+}
+
+entity ToolGroupConfig {
+    id: String
+    name: String
+    tools: Set<ToolReference>
+}
+
+entity ToolReference {
+    server_id: String
+    tool_name: String
+}
+
+-- User adds MCP server configuration
+rule MCPServerAddition {
+    when: UserAddsMCPServer(name, transport, config)
+
+    ensures:
+        let new_server = MCPServerConfig.created(
+            id: generate_uuid(),
+            name: name,
+            transport: transport,
+            config: config,
+        )
+        tool_config.mcp_servers = tool_config.mcp_servers + {new_server}
+}
+
+-- User updates MCP server configuration
+rule MCPServerUpdate {
+    when: UserUpdatesMCPServer(server_id, new_config)
+
+    requires: count(MCPServerConfig where id = server_id) > 0
+
+    ensures:
+        for s in MCPServerConfig where s.id = server_id:
+            s.config = new_config
+}
+
+-- User deletes MCP server configuration
+rule MCPServerDeletion {
+    when: UserDeletesMCPServer(server_id)
+
+    requires: count(MCPServerConfig where id = server_id) > 0
+    requires: count(ToolGroupConfig where exists t in tools where t.server_id = server_id) = 0
+
+    ensures:
+        for s in MCPServerConfig where s.id = server_id:
+            not exists s
+}
+
+-- User creates tool group
+rule ToolGroupCreation {
+    when: UserCreatesToolGroup(name)
+
+    ensures:
+        let new_group = ToolGroupConfig.created(
+            id: generate_uuid(),
+            name: name,
+            tools: {},
+        )
+        tool_config.tool_groups = tool_config.tool_groups + {new_group}
+}
+
+-- User adds tool to group
+rule ToolGroupToolAddition {
+    when: UserAddsToolToGroup(group_id, server_id, tool_name)
+
+    requires: count(ToolGroupConfig where id = group_id) > 0
+
+    ensures:
+        for g in ToolGroupConfig where g.id = group_id:
+            g.tools = g.tools + {ToolReference.created(server_id: server_id, tool_name: tool_name)}
+}
+
+-- User removes tool from group
+rule ToolGroupToolRemoval {
+    when: UserRemovesToolFromGroup(group_id, tool_index)
+
+    requires: count(ToolGroupConfig where id = group_id) > 0
+
+    ensures:
+        for g in ToolGroupConfig where g.id = group_id:
+            let tool = g.tools.at(tool_index)
+            g.tools = g.tools - {tool}
+}
+
+-- ============================================================================
+-- MODULE: Debug Components
+-- ============================================================================
+
+given {
+    debug_session: DebugSession
+}
+
+entity DebugSession {
+    chat_messages: Set<ChatMessage>
+    viseme_data: Set<VisemeSample>
+    log_entries: Set<LogEntry>
+}
+
+entity ChatMessage {
+    id: String
+    role: String
+    content: String
+    timestamp: Timestamp
+}
+
+entity VisemeSample {
+    viseme_type: String
+    timestamp: Timestamp
+    value: Float
+}
+
+entity LogEntry {
+    id: String
+    level: String
+    message: String
+    timestamp: Timestamp
+    metadata: Any?
+}
+
+-- User sends chat message
+rule ChatMessageSubmission {
+    when: UserSendsChatMessage(content)
+
+    ensures:
+        let new_message = ChatMessage.created(
+            id: generate_uuid(),
+            role: "user",
+            content: content,
+            timestamp: now(),
+        )
+        debug_session.chat_messages = debug_session.chat_messages + {new_message}
+    ensures: EmitTrigger(ChatMessageReceived(new_message))
+}
+
+-- System receives chat response
+rule ChatResponseHandling {
+    when: ChatMessageReceived(message)
+
+    ensures:
+        let response = ChatMessage.created(
+            id: generate_uuid(),
+            role: "assistant",
+            content: generate_response(message.content),
+            timestamp: now(),
+        )
+        debug_session.chat_messages = debug_session.chat_messages + {response}
+}
+
+-- Viseme data arrives for display
+rule VisemeDataHandling {
+    when: VisemeDataReceived(viseme_type, value)
+
+    ensures:
+        let sample = VisemeSample.created(
+            viseme_type: viseme_type,
+            timestamp: now(),
+            value: value,
+        )
+        debug_session.viseme_data = debug_session.viseme_data + {sample}
+}
+
+-- User clears log viewer
+rule LogClear {
+    when: UserClearsLogs()
+
+    ensures: debug_session.log_entries = {}
+}
+
+-- Log entry arrives
+rule LogEntryArrival {
+    when: LogEntryReceived(level, message, metadata)
+
+    ensures:
+        let entry = LogEntry.created(
+            id: generate_uuid(),
+            level: level,
+            message: message,
+            timestamp: now(),
+            metadata: metadata,
+        )
+        debug_session.log_entries = debug_session.log_entries + {entry}
+}
+
+-- ============================================================================
+-- SURFACES: Component Contracts
+-- ============================================================================
+
+surface QuickAddModal {
+    facing user: EditorUser
+
+    context connection: PendingConnection
+
+    exposes:
+        connection.source_node
+        connection.source_pad
+        connection.add_position
+
+    provides:
+        UserSelectsEligibleItem(item, source_node, source_pad, position)
+            when count(EligibleLibraryItem) > 0
+        UserCreatesPortal(source_node, source_pad, position)
+            when count(EligibleLibraryItem) = 0
+
+    related:
+        NodePicker(connection.source_node, connection.source_pad)
+}
+
+surface StateMachineEditor {
+    facing user: EditorUser
+
+    context sm: StateMachineNode
+
+    exposes:
+        sm.configuration.states
+        sm.configuration.transitions
+        sm.configuration.entry_state
+        sm.parameter_pads
+
+    provides:
+        UserAddsState(position)
+        UserAddsStateFromState(source_state_id, position)
+        UserSetsEntryState(target_state_id)
+        UserUpdatesStateName(state_id, new_name)
+        UserDeletesState(state_id)
+        UserAddsTransition(source_state_id, target_state_id)
+        UserUpdatesTransitionConditions(transition_id, new_conditions)
+        UserDeletesTransition(transition_id)
+        UserAddsParameter()
+        UserRemovesParameter()
+
+    @guarantee StateUniqueness
+        -- State IDs within a state machine are unique.
+
+    @guarantee TransitionValidity
+        -- All transitions reference existing states.
+}
+
+surface FlowGraphCanvas {
+    facing user: EditorUser
+
+    context graph: FlowGraph
+
+    exposes:
+        for node in graph.nodes:
+            node.id
+            node.node_type
+            node.position
+            node.pads
+        for conn in graph.connections:
+            conn.source_node
+            conn.source_pad
+            conn.target_node
+            conn.target_pad
+
+    provides:
+        UserConnectsPad(source_node, source_pad, target_node, target_pad)
+        UserRemovesNode(node_id)
+        UserUpdatesPad(node_id, pad_id, new_value)
+        UserQueriesEligibleItems(source_node, source_pad)
+
+    @guarantee ConnectionValidity
+        -- Connections only exist between compatible pad types.
+}
+
+surface AppEditPage {
+    facing user: EditorUser
+
+    context app: AppDefinition
+
+    exposes:
+        app.name
+        app.unsaved_changes
+        app.is_running
+
+    provides:
+        UserModifiesGraph(edit)
+            when not app.is_running
+        UserSavesApp()
+        UserStartsApp()
+        UserStopsApp()
+
+    @guarantee EditingWhileRunning
+        -- Graph modifications are blocked while the app is running.
+
+    @guarantee UnsavedChangesWarning
+        -- User is warned when navigating away with unsaved changes.
+}
+
+surface SubgraphLibrary {
+    facing user: EditorUser
+
+    context workspace: Workspace
+
+    exposes:
+        for subgraph in workspace.subgraphs:
+            subgraph.id
+            subgraph.name
+
+    provides:
+        UserCreatesSubgraph(name)
+        UserEmbedsSubgraph(subgraph_id, position)
+        UserOpensSubgraph(subgraph_id)
+        UserUpdatesSubgraphName(subgraph_id, new_name)
+        UserDeletesSubgraph(subgraph_id)
+
+    related:
+        FlowGraphCanvas()
+}
+
+surface ToolConfigurationPanel {
+    facing user: EditorUser
+
+    context config: ToolConfiguration
+
+    exposes:
+        for server in config.mcp_servers:
+            server.id
+            server.name
+            server.transport
+        for group in config.tool_groups:
+            group.id
+            group.name
+            group.tools
+
+    provides:
+        UserAddsMCPServer(name, transport, config)
+        UserUpdatesMCPServer(server_id, new_config)
+        UserDeletesMCPServer(server_id)
+        UserCreatesToolGroup(name)
+        UserAddsToolToGroup(group_id, server_id, tool_name)
+        UserRemovesToolFromGroup(group_id, tool_index)
+}
+
+surface DebugPanel {
+    facing user: Developer
+
+    context session: DebugSession
+
+    exposes:
+        for msg in session.chat_messages:
+            msg.role
+            msg.content
+            msg.timestamp
+        for viseme in session.viseme_data:
+            viseme.viseme_type
+            viseme.value
+        for log in session.log_entries:
+            log.level
+            log.message
+            log.timestamp
+
+    provides:
+        UserSendsChatMessage(content)
+        UserClearsLogs()
+
+    related:
+        LogViewer(session.log_entries)
+        VisemeDisplay(session.viseme_data)
+}
+
+surface LogViewer {
+    facing user: Developer
+
+    context entries: Set<LogEntry>
+
+    exposes:
+        for entry in entries:
+            entry.level
+            entry.message
+            entry.timestamp
+            entry.metadata
+
+    provides:
+        UserClearsLogs()
+
+    @guarantee LogOrdering
+        -- Log entries are displayed in chronological order.
+}
+
+-- ============================================================================
+-- INVARIANTS
+-- ============================================================================
+
+invariant ValidNodeConnections {
+    for conn in Connection:
+        count(PadInstance where node_id = conn.source_node and id = conn.source_pad) > 0
+        count(PadInstance where node_id = conn.target_node and id = conn.target_pad) > 0
+}
+
+invariant UniqueStateIds {
+    for sm_config in StateMachineConfiguration:
+        for s1 in sm_config.states:
+            for s2 in sm_config.states where s1 != s2:
+                s1.id != s2.id
+}
+
+invariant ValidTransitions {
+    for t in StateMachineTransition:
+        count(StateMachineState where id = t.from_state) > 0
+        count(StateMachineState where id = t.to_state) > 0
+}
+
+invariant NoOrphanPortals {
+    for p in Portal:
+        count(PadInstance where node_id = p.source_node and id = p.source_pad) > 0
+}
+
+invariant PortalEndValidity {
+    for pe in PortalEnd:
+        count(Portal where id = pe.portal_id) > 0
+        for pr in pe.next_pads:
+            count(NodeInstance where id = pr.node) > 0
+}
+
+-- ============================================================================
+-- OPEN QUESTIONS
+-- ============================================================================
+
+open question "Should portal creation be automatic or require explicit user confirmation?"
+open question "What is the maximum depth of nested subgraphs allowed?"
+open question "Should there be validation for MCP server configuration before saving?"
+open question "How should viseme data be scrolled/filtered in the debug view?"
