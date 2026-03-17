@@ -1,5 +1,7 @@
 -- allium: 2
 -- architecture.allium
+use "./core.allium" as core
+
 
 -- Scope: Gabber system architecture - all services and components
 -- Includes: Frontend, Editor, Engine, Repository, LiveKit, MCP Proxy Client
@@ -10,6 +12,10 @@
 
 -- ============================================================================
 -- CORE DOMAIN ENTITIES
+-- Core domain entities are defined in core.allium and imported above.
+-- This module focuses on system architecture and service composition.
+
+
 -- ============================================================================
 
 -- An App is the highest level construct in Gabber - a graph of nodes and pads
@@ -144,12 +150,7 @@ entity Transition {
     actions: List<Action>
 }
 
-entity Parameter {
-    id: String
-    name: String
-    type: ParameterType
-}
-
+-- Parameter entity removed - defined in core.allium
 -- ============================================================================
 -- SERVICE ARCHITECTURE
 -- ============================================================================
@@ -243,32 +244,13 @@ entity LiveKitService {
     log_level: String
 }
 
--- McpProxyClient proxies MCP traffic between Engine and MCP Servers
-entity McpProxyClient {
-    service_type: proxy_client
-    protocol: mcp
-
-    -- Connects to running Gabber sessions
-    provides_mcp_discovery: Boolean = true
-    provides_traffic_proxying: Boolean = true
-    provides_session_management: Boolean = true
-
-    mcp_config_file: String  -- mcp.yaml
-}
+-- McpProxyClient defined in mcp.allium
 
 -- ============================================================================
 -- EXTERNAL SERVICES (Optional/Configurable)
 -- ============================================================================
 
--- KittenTTSService provides text-to-speech capabilities
-entity KittenTTSService {
-    port: Integer = 7003
-    service_type: audio_service
-    audio_format: String = "l16;rate=24000"
-
-    provides_text_to_speech: Boolean = true
-    provides_audio_streaming: Boolean = true
-}
+-- KittenTTSService defined in services.allium
 
 -- LocalLLMService provides local LLM inference
 entity LocalLLMService {

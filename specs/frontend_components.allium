@@ -1,5 +1,7 @@
 -- allium: 2
 
+use "./core.allium" as core
+
 -- Gabber Frontend Components Specification
 -- Formal specification of editor UI component behavior
 
@@ -15,88 +17,10 @@
 -- DOMAIN ENTITIES
 -- ============================================================================
 
--- Graph representation in the editor
-entity FlowGraph {
-    nodes: Set<NodeInstance>
-    connections: Set<Connection>
-    portals: Set<Portal>
-    selection: Set<NodeInstance>
-    viewport: ViewportState
-}
+-- FlowGraph, NodeInstance, PadInstance, Connection, Portal, PortalEnd
+-- Point, ViewportState, Direction are defined in core.allium
 
--- A node instance in the flow graph
-entity NodeInstance {
-    id: String
-    node_type: String
-    position: Point
-    dimensions: Point?
-    pads: Set<PadInstance>
-    metadata: NodeMetadata
-    properties: Any?
-}
-
--- A pad (connection point) on a node
-entity PadInstance {
-    id: String
-    node_id: String
-    pad_type: String
-    direction: Direction
-    value: ClientPadValue?
-    connections: Set<Connection>
-}
-
--- A connection between two pads
-entity Connection {
-    source_node: String
-    source_pad: String
-    target_node: String
-    target_pad: String
-}
-
--- Portal for cross-graph references
-entity Portal {
-    id: String
-    source_node: String
-    source_pad: String
-    source_position: Point
-    ends: Set<PortalEnd>
-}
-
--- Portal end pointing to internal pads
-entity PortalEnd {
-    id: String
-    portal_id: String
-    position: Point
-    next_pads: Set<PadReference>
-}
-
--- Reference to a pad
-entity PadReference {
-    node: String
-    pad: String
-}
-
--- Viewport state for the graph canvas
-entity ViewportState {
-    x: Float
-    y: Float
-    zoom: Float
-}
-
--- Point in 2D space
-value Point { x: Float, y: Float }
-
--- Direction of a pad
-enum Direction {
-    Sink
-    Source
-}
-
--- Client-side pad value types
-value ClientPadValue {
-    type: String
-    value: Any
-}
+-- Client-side extensions
 
 -- ============================================================================
 -- STATE MACHINE DOMAIN
@@ -137,34 +61,7 @@ entity StateMachineTransitionCondition {
 -- LIBRARY AND DISCOVERY
 -- ============================================================================
 
--- Library item available for insertion
-entity LibraryItem {
-    type: String
-    name: String
-    description: String
-    metadata: NodeMetadata
-    pads: Set<PadDefinition>
-}
-
--- Eligible item for connection from a source pad
-entity EligibleLibraryItem {
-    library_item: LibraryItem
-    pads: Set<PadDefinition>
-}
-
--- Pad definition from library
-entity PadDefinition {
-    id: String
-    group: String
-    type: String
-    direction: String
-    allowed_types: Set<PadConstraint>?
-}
-
--- Pad constraint defining allowed connection types
-entity PadConstraint {
-    type_name: String
-}
+-- LibraryItem, PadDefinition, PadConstraint defined in core.allium
 
 -- ============================================================================
 -- EDIT OPERATIONS

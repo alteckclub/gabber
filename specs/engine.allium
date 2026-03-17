@@ -1,5 +1,7 @@
 -- allium: 2
 
+use "./core.allium" as core
+
 -- Gabber Engine Specification
 -- Distilled from engine/gabber/ implementation
 --

@@ -1,0 +1,465 @@
+-- allium: 1
+
+-- Gabber Core Domain Specification
+-- Shared entity definitions used across all Gabber specs
+--
+-- This module defines the fundamental domain entities that are shared
+-- between engine, frontend, repository, and other spec modules.
+-- Other specs should reference these via 'use' statements.
+
+-- ============================================================================
+-- GEOMETRY AND BASIC TYPES
+-- ============================================================================
+
+value Point { x: Float, y: Float }
+
+value ViewportState { x: Float, y: Float, zoom: Float }
+
+-- ============================================================================
+-- PAD SYSTEM
+-- ============================================================================
+
+-- Direction of data flow for pads
+enum Direction { Sink | Source }
+
+-- Base pad types in the engine
+enum BasePadType {
+    Trigger
+    String
+    Integer
+    Float
+    Boolean
+    Object
+    NodeReference
+    Secret
+    Audio
+    Video
+    Enum
+    Viseme
+}
+
+-- Pad direction modes
+enum PadMode { property | stateless }
+
+-- A pad is a typed connection point on a node
+entity Pad {
+    id: String
+    name: String
+    type: PadType
+    mode: PadMode
+    direction: Direction
+}
+
+-- Pad type with constraints
+entity PadType {
+    base_type: BasePadType
+    constraints: PadTypeConstraints
+}
+
+-- Type constraints ensure compatible connections
+entity PadTypeConstraints {
+    allowed_types: Set<BasePadType>
+}
+
+-- Connection between pads
+entity PadConnection {
+    source_pad: Pad
+    target_pad: Pad
+}
+
+-- ============================================================================
+-- NODE SYSTEM
+-- ============================================================================
+
+-- Metadata describing a node type
+entity NodeMetadata {
+    primary_category: String
+    secondary_category: String
+    tags: Set<String>
+}
+
+-- A node is a functional building block in a graph
+entity Node {
+    id: String
+    type: NodeType
+    label: String?
+    position: Point
+    input_pads: Set<Pad>
+    output_pads: Set<Pad>
+    properties: Map<String, PropertyValue>
+    state: NodeState
+}
+
+-- Node type categorizes nodes by function
+entity NodeType {
+    name: String
+    description: String
+    metadata: NodeMetadata
+}
+
+-- Node runtime state
+entity NodeState {
+    active: Boolean
+    error_message: String?
+    last_run_at: Timestamp?
+}
+
+-- Property value for node configuration
+entity PropertyValue {
+    kind: StringValue | IntegerValue | FloatValue | BooleanValue | ObjectValue
+}
+
+variant StringValue : PropertyValue { value: String }
+variant IntegerValue : PropertyValue { value: Integer }
+variant FloatValue : PropertyValue { value: Float }
+variant BooleanValue : PropertyValue { value: Boolean }
+variant ObjectValue : PropertyValue { value: Map<String, PropertyValue> }
+
+-- ============================================================================
+-- GRAPH STRUCTURE
+-- ============================================================================
+
+-- A connection between two pads (graph-level representation)
+entity Connection {
+    id: String
+    source_node: Node
+    source_pad: Pad
+    target_node: Node
+    target_pad: Pad
+}
+
+-- A portal exposes internal pads for sub-graph embedding
+entity Portal {
+    id: String
+    name: String
+    source_node: Node
+    source_pad: Pad
+    ends: Set<PortalEnd>
+}
+
+-- Portal end points to internal pads
+entity PortalEnd {
+    id: String
+    portal_id: String
+    position: Point
+    next_pads: Set<Pad>
+}
+
+-- Graph configuration for editor layout
+entity GraphConfiguration {
+    editor_layout: EditorLayout?
+}
+
+-- Editor layout metadata
+entity EditorLayout {
+    node_positions: Map<String, Point>
+    viewport: ViewportState?
+}
+
+-- A graph is a directed network of nodes and connections
+entity Graph {
+    id: String
+    nodes: Set<Node>
+    connections: Set<Connection>
+    portals: Set<Portal>
+    configuration: GraphConfiguration
+}
+
+-- ============================================================================
+-- STATE MACHINE
+-- ============================================================================
+
+-- State machine configuration
+entity StateMachineConfiguration {
+    states: Set<StateMachineState>
+    transitions: Set<StateMachineTransition>
+    entry_state: String?
+    entry_node_position: Point?
+    special_any_state_position: Point?
+}
+
+-- A state in the state machine
+entity StateMachineState {
+    id: String
+    name: String
+    position: Point
+}
+
+-- A transition between states
+entity StateMachineTransition {
+    id: String
+    from_state: String
+    to_state: String
+    conditions: Set<StateMachineTransitionCondition>
+}
+
+-- A condition on a transition
+entity StateMachineTransitionCondition {
+    parameter_name: String?
+    operator: String?
+    value: Any?
+}
+
+-- ============================================================================
+-- SUBGRAPH
+-- ============================================================================
+
+-- Proxy nodes for subgraph embedding
+entity ProxyNode {
+    id: String
+    proxy_type: ProxyNodeType
+    target_pad: Pad
+}
+
+-- Proxy node types
+enum ProxyNodeType {
+    ProxyPropertySink
+    ProxyPropertySource
+    ProxyStatelessSink
+    ProxyStatelessSource
+}
+
+-- A subgraph is an embeddable collection of nodes
+entity SubGraph {
+    id: String
+    name: String
+    description: String?
+    graph: Graph
+    proxy_inputs: List<ProxyNode>
+    proxy_outputs: List<ProxyNode>
+    visibility: public | private
+}
+
+-- ============================================================================
+-- APP
+-- ============================================================================
+
+-- User entity
+entity User {
+    id: String
+    name: String
+    email: String?
+}
+
+-- An app is a graph of nodes for execution
+entity App {
+    id: String
+    name: String
+    description: String?
+    graph: Graph
+    created_at: Timestamp
+    updated_at: Timestamp
+    owner: User?
+    visibility: public | private
+}
+
+-- ============================================================================
+-- VISEME (LIP-SYNC)
+-- ============================================================================
+
+-- Viseme types for lip-sync animation
+-- Unified enum combining variants from engine and nodes specs
+enum VisemeType {
+    SILENCE
+    P
+    B
+    M
+    O
+    U
+    F
+    V
+    T_D_N
+    S_Z
+    TH
+    SH
+    K_G
+    L
+    R
+}
+
+-- Lip-sync animation data
+entity Viseme {
+    value: VisemeType
+    probability: Float?
+    start_sample: Integer?
+    end_sample: Integer?
+}
+
+-- ============================================================================
+-- RUNTIME VALUES
+-- ============================================================================
+
+-- Runtime value flowing through pads
+entity RuntimeValue {
+    kind: RuntimeValueKind
+    value: Any
+}
+
+-- Runtime value kinds
+enum RuntimeValueKind {
+    Trigger
+    StringVal
+    IntegerVal
+    FloatVal
+    BooleanVal
+    AudioClipVal
+    AudioFrameVal
+    VideoClipVal
+    VideoFrameVal
+    AVClipVal
+    TextStreamVal
+    ContextMessageVal
+    ToolCallVal
+    ToolDefinitionVal
+    EnumVal
+    VisemeVal
+    SecretVal
+    NodeReferenceVal
+    PointVal
+    BoundingBoxVal
+    NullVal
+}
+
+-- Audio frame
+entity AudioFrame {
+    start_timestamp: Timestamp
+    data: AudioData
+}
+
+-- Audio data at a sample rate
+entity AudioData {
+    sample_rate: Integer
+    num_channels: Integer
+    duration: Duration
+}
+
+-- Audio clip
+entity AudioClip {
+    audio_frames: List<AudioFrame>
+    transcription: String?
+    duration: Duration
+}
+
+-- Video frame
+entity VideoFrame {
+    width: Integer
+    height: Integer
+    timestamp: Timestamp
+    format: VideoFormat
+}
+
+-- Video format
+enum VideoFormat { RGBA | YUV | RGB }
+
+-- Video clip
+entity VideoClip {
+    video_frames: List<VideoFrame>
+    duration: Duration
+}
+
+-- Combined audio and video
+entity AVClip {
+    audio: AudioClip
+    video: VideoClip
+}
+
+-- Streaming text
+entity TextStream {
+    content: String
+    is_complete: Boolean
+}
+
+-- ============================================================================
+-- LLM CONTEXT
+-- ============================================================================
+
+-- Message role in LLM conversation
+enum MessageRole { System | User | Assistant | Tool }
+
+-- Content item in a message
+entity ContentItem {
+    kind: TextContent | AudioContent | VideoContent | ImageContent
+}
+
+variant TextContent : ContentItem { value: String }
+variant AudioContent : ContentItem { value: AudioClip }
+variant VideoContent : ContentItem { value: VideoClip }
+variant ImageContent : ContentItem { value: VideoFrame }
+
+-- LLM conversation message
+entity ContextMessage {
+    role: MessageRole
+    content: List<ContentItem>
+    tool_calls: List<ToolCall>?
+    tool_call_id: String?
+}
+
+-- Function call from LLM
+entity ToolCall {
+    call_id: String
+    name: String
+    arguments: Map<String, Any>
+    index: Integer
+}
+
+-- Function definition for LLM tool use
+entity ToolDefinition {
+    name: String
+    description: String
+    parameters: Any?
+    destination: ToolDestination
+}
+
+-- Tool destination
+enum ToolDestination { Webhook | Client }
+
+-- ============================================================================
+-- GRAPH EDITOR REPRESENTATION
+-- ============================================================================
+
+-- Pad definition for library items
+entity PadDefinition {
+    id: String
+    group: String
+    type: BasePadType
+    direction: Direction
+    allowed_types: Set<PadConstraint>?
+}
+
+-- Pad constraint
+entity PadConstraint {
+    type_name: String
+}
+
+-- Library item available for insertion
+entity LibraryItem {
+    type: NodeType
+    name: String
+    description: String
+    metadata: NodeMetadata
+    pads: Set<PadDefinition>
+}
+
+-- Graph representation for the editor
+entity GraphEditorRepresentation {
+    nodes: Set<NodeDefinition>
+    pad_links: Set<PadLink>
+    portals: Set<Portal>
+}
+
+-- Node definition in editor representation
+entity NodeDefinition {
+    id: String
+    type: NodeType
+    pads: Map<String, PadDefinition>
+    properties: Map<String, PropertyValue>
+    position: Point?
+}
+
+-- Pad link in editor representation
+entity PadLink {
+    source_node: String
+    source_pad: String
+    target_node: String
+    target_pad: String
+}

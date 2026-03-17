@@ -1,5 +1,7 @@
 -- allium: 2
 
+use "./core.allium" as core
+
 -- Gabber Repository Service Specification
 -- Distilled from engine/gabber/services/repository/
 --
