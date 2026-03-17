@@ -1,0 +1,539 @@
+-- allium: 2
+
+-- LiveKit/WebRTC Integration Specification
+-- Formal specification for LiveKit integration in Gabber
+
+-- ============================================================================
+-- ENUMS AND TYPE DEFINITIONS
+-- ============================================================================
+
+enum TrackKind {
+    audio
+    video
+}
+
+enum ParticipantKind {
+    agent
+    human
+    debug
+    mcp_proxy
+}
+
+enum GrantPermission {
+    room_join
+    room_create
+    can_publish
+    can_subscribe
+    can_publish_data
+}
+
+-- ============================================================================
+-- CONFIGURATION
+-- ============================================================================
+
+config {
+    livekit_url: String = "ws://localhost:7880"
+    internal_livekit_url: String = livekit_url
+    livekit_api_key: String = "devkey"
+    livekit_api_secret: String = "secret"
+    room_timeout_seconds: Integer = 300
+    publish_lock_timeout_seconds: Integer = 10
+    track_timeout_seconds: Integer = 1
+}
+
+-- ============================================================================
+-- VALUE TYPES
+-- ============================================================================
+
+value LiveKitConnectionDetails {
+    url: String
+    token: String
+    room_name: String
+}
+
+value VideoFrame {
+    data: ByteArray
+    width: Integer
+    height: Integer
+    timestamp: Timestamp
+}
+
+value AudioFrame {
+    start_timestamp: Timestamp
+    original_data: AudioFrameData
+    data_16000hz: AudioFrameData
+    data_24000hz: AudioFrameData
+    data_44100hz: AudioFrameData
+    data_48000hz: AudioFrameData
+}
+
+value AudioFrameData {
+    data: List<Integer>
+    sample_rate: Integer
+    num_channels: Integer
+}
+
+value ParticipantMetadata {
+    name: String?
+    identity: String?
+    custom_fields: Map<String, String>?
+}
+
+value TrackPublication {
+    sid: String
+    name: String
+    kind: TrackKind
+    subscribed: Boolean
+    participant_identity: String
+}
+
+-- ============================================================================
+-- EXTERNAL ENTITIES
+-- ============================================================================
+
+external entity LiveKitRoom {
+    name: String
+    sid: String
+}
+
+external entity LiveKitParticipant {
+    identity: String
+    sid: String
+    kind: ParticipantKind
+    metadata: ParticipantMetadata?
+    track_publications: Map<String, TrackPublication>
+}
+
+external entity RemoteTrackPublication {
+    sid: String
+    name: String
+    kind: TrackKind
+    track: Any?
+    subscribed: Boolean
+}
+
+-- ============================================================================
+-- CORE ENTITIES
+-- ============================================================================
+
+entity AppRun {
+    run_id: String
+    graph: Any
+    connection_details: LiveKitConnectionDetails?
+    room: LiveKitRoom?
+}
+
+entity DebugConnection {
+    run_id: String
+    connection_details: LiveKitConnectionDetails?
+    graph: Any?
+}
+
+entity MCPProxyConnection {
+    run_id: String
+    connection_details: LiveKitConnectionDetails?
+}
+
+entity RoomSession {
+    room: LiveKitRoom
+    local_participant: LiveKitParticipant
+    remote_participants: Map<String, LiveKitParticipant>
+    is_connected: Boolean = False
+}
+
+entity AudioTrackPublication {
+    room: RoomSession
+    participant_identity: String
+    track_name: String
+    publication: RemoteTrackPublication?
+    stream: Any?
+}
+
+entity VideoTrackPublication {
+    room: RoomSession
+    participant_identity: String
+    track_name: String
+    publication: RemoteTrackPublication?
+    stream: Any?
+}
+
+entity PublishNode {
+    id: String
+    room: RoomSession?
+    audio_enabled: Boolean = False
+    video_enabled: Boolean = False
+    allowed_participant: String?
+}
+
+entity RuntimeApi {
+    room: RoomSession
+    nodes: List<Any>
+    publish_locks: Map<String, PublishLock>
+    dc_queue: Any
+}
+
+entity PublishLock {
+    room: RoomSession
+    participant_id: String
+    publish_node: String
+    node: PublishNode
+    is_locked: Boolean = True
+    unlock_tasks: List<Any>
+}
+
+entity DataChannelPacket {
+    topic: String
+    data: String
+    participant: LiveKitParticipant?
+}
+
+entity RuntimeRequest {
+    req_id: String
+    payload: RuntimeRequestPayload
+}
+
+entity RuntimeResponse {
+    req_id: String
+    error: String?
+    payload: RuntimeResponsePayload?
+}
+
+entity ToolCallRequest {
+    tool_definition: Any
+    tool_call: Any
+}
+
+entity ToolCallResponse {
+    call_id: String
+    result: String?
+    error: String?
+}
+
+-- ============================================================================
+-- RULES
+-- ============================================================================
+
+rule AppRunConnectionCreation {
+    when: app: AppRun.run_id
+
+    ensures:
+        token = generate_jwt_token(
+            api_key = config.livekit_api_key,
+            api_secret = config.livekit_api_secret,
+            grants = VideoGrants(
+                room_join = True,
+                room = app.run_id,
+                room_create = False,
+                can_publish = True,
+                can_subscribe = True
+            ),
+            identity = f"human-{short_uuid()}",
+            metadata = json.dumps({name: "test-name"})
+        )
+        app.connection_details = LiveKitConnectionDetails(
+            url = config.livekit_url,
+            token = token,
+            room_name = app.run_id
+        )
+
+    @guidance
+        -- Repository service creates connection details for app runs.
+        -- JWT token is generated with appropriate video grants.
+        -- Room is created if it doesn't exist.
+        -- Agent dispatch is created with graph metadata (gzip + base64 encoded).
+}
+
+rule RoomCreation {
+    when: app: AppRun.run_id
+
+    ensures:
+        room = LiveKitRoom.created(
+            name = app.run_id,
+            sid = generate_room_sid()
+        )
+        agent_dispatch = AgentDispatch.created(
+            room = room,
+            agent_name = "gabber-engine",
+            metadata = encode_graph_metadata(app.graph)
+        )
+        app.room = room
+
+    @guidance
+        -- Room is created via LiveKit API.
+        -- Agent dispatch includes the app graph as compressed metadata.
+        -- Uses internal_livekit_url for server-to-server communication.
+}
+
+rule DebugConnectionCreation {
+    when: debug: DebugConnection.run_id
+
+    ensures:
+        token = generate_jwt_token(
+            api_key = config.livekit_api_key,
+            api_secret = config.livekit_api_secret,
+            grants = VideoGrants(
+                room_join = True,
+                room = debug.run_id,
+                can_publish = False,
+                can_subscribe = True,
+                can_publish_data = True
+            ),
+            identity = "debug"
+        )
+        debug.connection_details = LiveKitConnectionDetails(
+            url = config.livekit_url,
+            token = token,
+            room_name = debug.run_id
+        )
+        dispatch = AgentDispatch.find(
+            where room.name = debug.run_id
+            and agent_name = "gabber-engine"
+        )
+        debug.graph = decode_graph_metadata(dispatch.metadata)
+
+    @guidance
+        -- Debug connection has publish disabled, subscribe and data publish enabled.
+        -- Identity is hardcoded as "debug".
+        -- Graph is extracted from agent dispatch metadata.
+}
+
+rule MCPProxyConnectionCreation {
+    when: mcp: MCPProxyConnection.run_id
+
+    ensures:
+        token = generate_jwt_token(
+            api_key = config.livekit_api_key,
+            api_secret = config.livekit_api_secret,
+            grants = VideoGrants(
+                room_join = True,
+                room = mcp.run_id,
+                can_publish = False,
+                can_subscribe = True,
+                can_publish_data = True
+            ),
+            identity = "mcp_proxy"
+        )
+        mcp.connection_details = LiveKitConnectionDetails(
+            url = config.livekit_url,
+            token = token,
+            room_name = mcp.run_id
+        )
+
+    @guidance
+        -- MCP proxy connection has same grants as debug.
+        -- Identity is hardcoded as "mcp_proxy".
+}
+
+rule RoomSessionEstablishment {
+    when: session: RoomSession.room
+
+    requires: session.is_connected = False
+
+    ensures: session.is_connected = True
+    ensures: session.local_participant != null
+
+    @guidance
+        -- Room session is established by joining with connection token.
+        -- Local participant is registered.
+        -- Event handlers are set up for remote participants and tracks.
+}
+
+rule AudioStreamSubscription {
+    when: audio: AudioTrackPublication.room
+
+    for publication in audio.participant.track_publications where kind = audio:
+        if publication.name = audio.track_name:
+            ensures:
+                audio.publication = publication
+                audio.stream = AudioStream.from_track(
+                    track = publication.track,
+                    noise_cancellation = BVC()
+                )
+
+    @guidance
+        -- Audio stream is subscribed from remote participant's track.
+        -- Noise cancellation (BVC) is applied.
+        -- Stream provides audio frames at various sample rates.
+}
+
+rule VideoStreamSubscription {
+    when: video: VideoTrackPublication.room
+
+    for publication in video.participant.track_publications where kind = video:
+        if publication.name = video.track_name:
+            ensures:
+                video.publication = publication
+                video.stream = VideoStream.from_track(track = publication.track)
+
+    @guidance
+        -- Video stream is subscribed from remote participant's track.
+        -- Frames are converted to RGBA format for processing.
+}
+
+rule PublishNodeParticipantLock {
+    when: publish: PublishNode.audio_enabled
+
+    requires: publish.allowed_participant = null
+
+    ensures: publish.allowed_participant != null
+
+    @guidance
+        -- Participant identity is locked when they start publishing.
+        -- PublishNode.set_allowed_participant is called.
+        -- Only the locked participant's tracks are subscribed.
+        -- 10-second timeout for track publication.
+}
+
+rule PublishLockTimeout {
+    when: lock: PublishLock.is_locked
+
+    requires: lock.is_locked = True
+
+    ensures: lock.is_locked = False
+
+    @guidance
+        -- After 10 seconds, checks if participant is still publishing.
+        -- If no tracks are being published for 1 second, releases lock.
+        -- PublishNode.unset_allowed_participant is called.
+}
+
+rule TrackTimeoutDetection {
+    when: track: AudioTrackPublication.stream
+
+    ensures:
+        if no_audio_frames_for(track, config.track_timeout_seconds):
+            track.stream = null
+            track.publication.subscribed = False
+
+    @guidance
+        -- Monitors audio frame timestamps.
+        -- If no frames received for 1 second, stream is closed.
+        -- Same logic applies for video tracks.
+}
+
+rule RuntimeApiDataRouting {
+    when: packet: DataChannelPacket.topic = "runtime_api"
+
+    ensures:
+        request = RuntimeRequest.parse(packet.data)
+        response = handle_runtime_request(request)
+        publish_data(
+            topic = "runtime_api",
+            data = response.model_dump_json(),
+            destination = packet.participant
+        )
+
+    @guidance
+        -- Runtime API handles pad value operations.
+        -- Topics: runtime_api, tool_call.
+        -- Supports: lock_publisher, push_value, get_value, get_list_items.
+        -- Responses are sent back to the requesting participant.
+}
+
+rule ToolCallRouting {
+    when: packet: DataChannelPacket.topic = "tool_call"
+
+    ensures:
+        response = ToolCallResponse.parse(packet.data)
+        if response.type = "initiate_ack":
+            acknowledge_tool_call(response.call_id)
+        if response.type = "result":
+            complete_tool_call(response.call_id, response.result)
+
+    @guidance
+        -- Tool calls are routed between engine and client.
+        -- 5-second timeout for initiation ack.
+        -- 60-second timeout for result.
+        -- ToolGroup nodes handle tool call execution.
+}
+
+rule PadValuePropagation {
+    when: pad: PropertyPad.value
+
+    ensures:
+        event = RuntimeEvent(
+            type = "event",
+            payload = RuntimeEventPayload_Value(
+                type = "value",
+                value = pad.value,
+                node_id = pad.owner_node.id,
+                pad_id = pad.id
+            )
+        )
+        publish_data(
+            topic = "runtime_api",
+            data = event.model_dump_json()
+        )
+
+    @guidance
+        -- Pad value changes are propagated to client via data channel.
+        -- Values are converted to client format via Mapper.
+        -- All pads have update handlers registered.
+}
+
+rule DataChannelQueueConsumption {
+    when: runtime: RuntimeApi.dc_queue
+
+    ensures:
+        for item in runtime.dc_queue:
+            if item.participant != null:
+                publish_data(
+                    topic = item.topic,
+                    data = item.payload.model_dump_json(),
+                    destination = item.participant.identity
+                )
+            else:
+                publish_data(
+                    topic = item.topic,
+                    data = item.payload.model_dump_json()
+                )
+
+    @guidance
+        -- Data channel queue consumes pending messages.
+        -- Messages are sent to specific participants or broadcast.
+        -- Queue items include RuntimeEvent, RuntimeResponse, ToolCallRequest.
+}
+
+-- ============================================================================
+-- INVARIANTS
+-- ============================================================================
+
+invariant ValidRoomConfiguration {
+    for app in AppRun:
+        app.run_id is not empty
+}
+
+invariant UniqueRoomNames {
+    for r1 in LiveKitRoom:
+        for r2 in LiveKitRoom:
+            r1 != r2 implies r1.name != r2.name
+}
+
+invariant ConnectedSessionHasParticipant {
+    for session in RoomSession:
+        session.is_connected = True implies session.local_participant != null
+}
+
+invariant PublishLockRequiresParticipant {
+    for lock in PublishLock:
+        lock.is_locked = True implies lock.participant_id is not empty
+}
+
+invariant TrackPublicationMatchesName {
+    for audio in AudioTrackPublication:
+        audio.publication != null implies audio.publication.name = audio.track_name
+}
+
+invariant ValidTokenGrants {
+    for details in LiveKitConnectionDetails:
+        token = decode_jwt(details.token)
+        token.grants.room_join = True
+}
+
+-- ============================================================================
+-- OPEN QUESTIONS
+-- ============================================================================
+
+open question "Room cleanup - when should rooms be automatically deleted after disconnection?"
+open question "Participant identity - should we use UUIDs or meaningful identifiers?"
+open question "Track naming - should track names include node ID or be simpler?"
