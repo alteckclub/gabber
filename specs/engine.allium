@@ -38,32 +38,7 @@ entity Application {
 -- A Graph is a directed network of nodes connected via pads.
 -- Graphs can be nested (sub-graphs) for composition.
 
-entity Graph {
-    id: String
-    nodes: Set<Node>
-    portals: Set<Portal>           -- Graph-level connection points for sub-graphs
-    configuration: GraphConfiguration
-}
-
--- Graph configuration stores metadata for the visual editor
-entity GraphConfiguration {
-    editor_layout: EditorLayout?
-}
-
--- A Portal enables sub-graphs to expose internal pads to parent graphs
-entity Portal {
-    id: String
-    name: String
-    source_node: Node
-    source_pad: Pad
-    ends: Set<PortalEnd>
-}
-
-entity PortalEnd {
-    id: String
-    next_pads: Set<Pad>
-    position: Point
-}
+-- Graph, Node, Pad, Connection, Portal, and related types are defined in core.allium
 
 -- ============================================================================
 -- NODE SYSTEM
@@ -72,32 +47,6 @@ entity PortalEnd {
 -- Nodes are the fundamental building blocks of AI applications.
 -- Each node performs a specific function (e.g., STT, TTS, LLM, logic).
 
-entity Node {
-    id: String
-    type: NodeType
-    pads: Set<Pad>
-    configuration: NodeConfiguration
-    editor_representation: EditorRepresentation?
-}
-
--- Every node has a type that determines its functionality and pad structure
-entity NodeType {
-    name: String
-    description: String
-    metadata: NodeMetadata
-}
-
-entity NodeMetadata {
-    primary_category: String
-    secondary_category: String
-    tags: Set<String>
-}
-
-entity EditorRepresentation {
-    position: Point
-    dimensions: Point?
-    name: String?
-}
 
 -- ============================================================================
 -- PAD SYSTEM (CONNECTION POINTS)
@@ -106,37 +55,6 @@ entity EditorRepresentation {
 -- Pads are typed connection points on nodes. Data flows from source pads
 -- to sink pads through explicit connections.
 
-entity Pad {
-    id: String
-    type: PadType
-    constraints: PadTypeConstraints
-    value: RuntimeValue?              -- For property pads
-    connections: Set<PadConnection>
-}
-
--- Three pad types with different semantics
-enum PadType { StatelessSourcePad | StatelessSinkPad | PropertySourcePad | PropertySinkPad }
-
--- Type constraints ensure compatible connections
-entity PadTypeConstraints {
-    allowed_types: Set<BasePadType>
-}
-
--- The type system for pad connections
-enum BasePadType {
-    Trigger                           -- Event signal (no data)
-    String
-    Integer
-    Float
-    Boolean
-    Object                            -- Generic structured data
-    NodeReference                     -- Reference to another node
-    Secret                            -- Reference to a secret value
-    Audio                             -- Audio stream data
-    Video                             -- Video stream data
-    Enum                              -- Constrained string choice
-    Viseme                            -- Lip-sync animation data
-}
 
 -- ============================================================================
 -- RUNTIME DATA TYPES
@@ -144,134 +62,9 @@ enum BasePadType {
 
 -- Values that flow through pads during execution
 
-entity RuntimeValue {
-    kind: Trigger | StringVal | IntegerVal | FloatVal | BooleanVal |
-          AudioClipVal | AudioFrameVal | VideoClipVal | VideoFrameVal |
-          AVClipVal | TextStreamVal | ContextMessageVal | ToolCallVal |
-          ToolDefinitionVal | EnumVal | VisemeVal | SecretVal |
-          NodeReferenceVal | PointVal | BoundingBoxVal | NullVal
-}
+-- RuntimeValue and variants are defined in core.allium
 
-variant Trigger : RuntimeValue { }
-
-variant StringVal : RuntimeValue { value: String }
-
-variant IntegerVal : RuntimeValue { value: Integer }
-
-variant FloatVal : RuntimeValue { value: Float }
-
-variant BooleanVal : RuntimeValue { value: Boolean }
-
-variant AudioClipVal : RuntimeValue { value: AudioClip }
-
-variant AudioFrameVal : RuntimeValue { value: AudioFrame }
-
-variant VideoClipVal : RuntimeValue { value: VideoClip }
-
-variant VideoFrameVal : RuntimeValue { value: VideoFrame }
-
-variant AVClipVal : RuntimeValue { value: AVClip }
-
-variant TextStreamVal : RuntimeValue { value: TextStream }
-
-variant ContextMessageVal : RuntimeValue { value: ContextMessage }
-
-variant ToolCallVal : RuntimeValue { value: ToolCall }
-
-variant ToolDefinitionVal : RuntimeValue { value: ToolDefinition }
-
-variant EnumVal : RuntimeValue { value: String }
-
-variant VisemeVal : RuntimeValue { value: Viseme }
-
-variant SecretVal : RuntimeValue { value: Secret }
-
-variant NodeReferenceVal : RuntimeValue { value: NodeReference }
-
-variant PointVal : RuntimeValue { value: Point }
-
-variant BoundingBoxVal : RuntimeValue { value: BoundingBox }
-
-variant NullVal : RuntimeValue { }
-
--- Audio with optional speech transcription
-entity AudioClip {
-    audio_frames: List<AudioFrame>
-    transcription: String?
-    duration: Duration
-}
-
--- Single audio frame in multiple sample rates
-entity AudioFrame {
-    start_timestamp: Timestamp
-    data: AudioData                   -- Available at multiple sample rates
-}
-
-entity AudioData {
-    sample_rate: SampleRate
-    num_channels: Integer
-    duration: Duration
-}
-
--- Video frame with RGBA data
-entity VideoFrame {
-    width: Integer
-    height: Integer
-    timestamp: Timestamp
-    format: VideoFormat
-}
-
--- Sequence of video frames
-entity VideoClip {
-    video_frames: List<VideoFrame>
-    duration: Duration
-}
-
--- Synchronized audio and video
-entity AVClip {
-    audio: AudioClip
-    video: VideoClip
-}
-
--- Streaming text (e.g., from LLM)
-entity TextStream {
-    -- Stream of text chunks, terminated by EOS
-}
-
--- LLM conversation message with multimodal content
-entity ContextMessage {
-    role: MessageRole
-    content: List<ContentItem>
-    tool_calls: List<ToolCall>?
-    tool_call_id: String?
-}
-
-enum MessageRole { System | User | Assistant | Tool }
-
-entity ContentValue {
-    kind: TextContentVal | AudioContentVal | VideoContentVal | ImageContentVal
-}
-
-variant TextContentVal : ContentValue { value: TextContent }
-
-variant AudioContentVal : ContentValue { value: AudioContent }
-
-variant VideoContentVal : ContentValue { value: VideoContent }
-
-variant ImageContentVal : ContentValue { value: ImageContent }
-
-entity TextContent { content: String }
-entity AudioContent { clip: AudioClip }
-entity VideoContent { clip: VideoClip }
-entity ImageContent { frame: VideoFrame }
-
--- Function call from LLM
-entity ToolCall {
-    call_id: String
-    name: String
-    arguments: Map<String, Value>
-    index: Integer
-}
+-- AudioClip, AudioFrame, AudioData, VideoFrame, VideoClip, AVClip, TextStream are defined in core.allium
 
 -- Function definition for LLM tool use
 entity ToolDefinition {
@@ -388,30 +181,7 @@ entity StateMachineNode {
     parameters: List<Parameter>
 }
 
-entity StateMachineConfiguration {
-    states: List<State>
-    transitions: List<Transition>
-    entry_state: String?
-}
-
-entity State {
-    id: String
-    name: String
-    position: Point
-}
-
-entity Transition {
-    id: String
-    from_state: String
-    to_state: String
-    conditions: List<Condition>
-}
-
-entity Condition {
-    parameter_name: String?
-    operator: ComparisonOperator
-    value: Any?
-}
+-- StateMachineConfiguration, StateMachineState, StateMachineTransition are defined in core.allium
 
 enum ComparisonOperator {
     LT | LE | EQ | NE | GE | GT |
@@ -441,27 +211,7 @@ rule StateMachineTransition {
 
 -- Sub-graphs enable graph reuse and hierarchical composition
 
-entity SubGraphNode {
-    node: Node
-    sub_graph: Graph
-    sub_graph_id: String
-}
-
--- Portal pads expose internal graph structure
-entity ProxyPropertySink {
-    pad: PropertySinkPad
-    target_pad: Pad           -- Pad inside sub-graph
-}
-
-entity ProxyPropertySource {
-    pad: PropertySourcePad
-    target_pad: Pad
-}
-
-entity ProxyStatelessSink {
-    pad: StatelessSinkPad
-    target_pad: Pad
-}
+-- SubGraphNode, ProxyPropertySink, ProxyPropertySource, ProxyStatelessSink are defined in nodes.allium / core.allium
 
 -- ============================================================================
 -- SECRET MANAGEMENT
@@ -474,10 +224,7 @@ entity Secret {
     name: String
 }
 
-entity PublicSecret {
-    id: String
-    name: String
-}
+-- PublicSecret is defined in repository.allium
 
 -- ============================================================================
 -- TYPE CONSTRAINT SYSTEM

@@ -1,5 +1,6 @@
 -- allium: 2
 
+use "./core.allium" as core
 -- MCP Integration Protocol Specification
 -- Formal specification for Model Context Protocol integration in Gabber
 

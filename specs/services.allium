@@ -1,5 +1,6 @@
 -- allium: 2
 
+use "./core.allium" as core
 -- Gabber Services Specification
 -- Distilled from services/gabber-stt/ and services/kitten-tts/ implementation
 --

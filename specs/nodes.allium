@@ -1,5 +1,6 @@
 -- allium: 2
 
+use "./core.allium" as core
 -- Gabber Node Library Specification
 -- Distilled from engine/gabber/nodes/ implementation
 
