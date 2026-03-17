@@ -1,0 +1,345 @@
+-- allium: 2
+
+-- Gabber Engine Library Specifications
+-- Distilled from engine/gabber/lib/ implementation
+
+-- ============================================================================
+-- SCOPE
+-- ============================================================================
+
+-- This specification covers the Gabber engine library implementations:
+-- - LLM Integration: OpenAI-compatible client, mock LLM, token estimator
+-- - STT Backends: Deepgram, Kyutai, Assembly, Gabber STT
+-- - TTS Backends: Cartesia, ElevenLabs, OpenAI, MiniMax, Gabber TTS
+-- - Audio Processing: VAD (Silero), resampler
+-- - Video Processing: MP4 encoder
+
+-- ============================================================================
+-- LLM INTEGRATION
+-- ============================================================================
+
+-- The LLM integration layer provides a unified interface for large language
+-- model interactions, supporting multiple providers through an OpenAI-compatible
+-- protocol while abstracting provider-specific details.
+
+-- Request structure for LLM generation with context and tool definitions.
+entity LLMRequest {
+    context: Set<ContextMessage>
+    tool_definitions: Set<ToolDefinition>
+    token_count: Integer  -- Estimated token count for the request
+}
+
+-- Streaming response handle for LLM generations. Manages async iteration
+-- over response deltas with timeout and cancellation support.
+entity AsyncLLMResponseHandle {
+    id: String
+    status: active | cancelled | completed
+
+    -- Timeout configuration (defaults)
+    first_token_timeout: Duration = 45.0.seconds
+    total_timeout: Duration = 90.0.seconds
+
+    -- Response stream
+    response_stream: Set<ContextMessageContent_ChoiceDelta>
+
+    -- Usage information from the LLM
+    usage: LLMUsage?
+}
+
+entity LLMUsage {
+    prompt_tokens: Integer
+    completion_tokens: Integer
+    total_tokens: Integer
+}
+
+-- Token estimation for cost tracking and context window management.
+-- Supports different estimation strategies for different content types.
+entity TokenEstimator {
+    video_frame_pixels_per_token: Float
+    image_pixels_per_token: Float
+    audio_samples_per_token: Float
+    tokens_per_word: Float
+
+    -- Pre-configured estimators
+    openai_estimator: TokenEstimator = {
+        video_frame_pixels_per_token: 512.0,
+        image_pixels_per_token: 512.0,
+        audio_samples_per_token: 16000.0,
+        tokens_per_word: 1.25
+    }
+
+    qwen_estimator: TokenEstimator = {
+        video_frame_pixels_per_token: 128.0,
+        image_pixels_per_token: 512.0,
+        audio_samples_per_token: 16000.0,
+        tokens_per_word: 1.25
+    }
+}
+
+-- OpenAI-compatible LLM client configuration. Supports streaming responses,
+-- tool calls, audio input, and video input through the OpenAI API protocol.
+entity OpenAICompatibleLLM {
+    model: String
+    base_url: String
+    api_key: String
+    headers: Set<MapEntry<String, String>>
+    max_context_len: Integer
+    token_estimator: TokenEstimator
+
+    -- Supported capabilities
+    supports_audio: Boolean
+    supports_video: Boolean
+}
+
+-- Mock LLM for testing. Returns predefined responses with simulated streaming
+-- behavior. Useful for development and unit testing without external dependencies.
+entity MockLLM {
+    mock_responses: Set<String>
+    current_response_index: Integer
+    response_delay_ms: Integer = 100
+}
+
+-- ============================================================================
+-- SPEECH-TO-TEXT (STT) BACKENDS
+-- ============================================================================
+
+-- STT event types for streaming transcription output.
+
+-- Event indicating speech has been detected in the audio stream.
+entity STTEvent_SpeechStarted {
+    id: String           -- Event identifier
+    -- Speech detection marker - no additional data
+}
+
+-- Event containing transcription updates. Provides both incremental
+-- (delta) and complete (running) transcription text.
+entity STTEvent_Transcription {
+    id: String           -- Event identifier
+    delta_text: String   -- New words since last event
+    running_text: String -- Complete transcription so far
+}
+
+-- Event marking the end of a speech turn. Contains the complete
+-- audio clip and final transcription.
+entity STTEvent_EndOfTurn {
+    id: String           -- Event identifier
+    clip: AudioClip      -- Audio clip with transcription
+}
+
+-- Event containing viseme data for avatar animation.
+entity STTEvent_Viseme {
+    id: String           -- Event identifier
+    viseme: String       -- Viseme identifier
+}
+
+-- Deepgram STT backend configuration. Uses Deepgram's Nova-3 model
+-- for high-quality transcription with streaming support.
+entity DeepgramSTTConfig {
+    api_key: String
+    model: String = "nova-3-general"
+
+    -- Deepgram-specific configuration
+    punctuate: Boolean = True
+    smart_format: Boolean = True
+    encoding: String = "linear16"
+    sample_rate: Integer = 24000
+    channels: Integer = 1
+    interim_results: Boolean = True
+    utterance_end_ms: Integer = 1000
+    vad_events: Boolean = True
+    endpointing_ms: Integer = 750
+}
+
+-- Kyutai STT backend configuration. Implements speech-to-text using
+-- the Kyutai platform with exponential moving average for confidence.
+entity KyutaiSTTConfig {
+    api_key: String
+    model: String
+}
+
+-- Assembly AI STT backend configuration. Provides transcription through
+-- Assembly AI with support for multiple languages and speaker diarization.
+entity AssemblySTTConfig {
+    api_key: String
+    model: String
+}
+
+-- Gabber STT backend configuration. Native Gabber implementation for
+-- speech-to-text with custom models optimized for Gabber's audio pipeline.
+entity GabberSTTConfig {
+    model: String
+}
+
+-- ============================================================================
+-- TEXT-TO-SPEECH (TTS) BACKENDS
+-- ============================================================================
+
+-- TTS session for generating audio from text. Supports streaming text input
+-- and streaming audio output with multiple concurrent sessions.
+entity TTSSession {
+    voice: String
+    context_id: String
+
+    -- Text input queue
+    text_queue: Set<String>
+
+    -- Audio output stream
+    audio_stream: Set<AudioFrame>
+
+    -- Session status
+    status: active | cancelled | completed
+}
+
+-- Cartesia TTS backend configuration. Uses Cartesia's Sonic-2 model
+-- for high-quality neural text-to-speech with fast streaming.
+entity CartesiaTTSConfig {
+    api_key: String
+    model_id: String = "sonic-2"
+
+    -- Text preprocessing options
+    remove_italics: Boolean = True
+    remove_parentheses: Boolean = True
+    remove_emojis: Boolean = True
+
+    -- Audio output format
+    sample_rate: Integer = 24000
+    channels: Integer = 1
+    encoding: String = "pcm_s16le"
+
+    -- Buffer configuration
+    max_buffer_delay_ms: Integer = 250
+}
+
+-- ElevenLabs TTS backend configuration. Provides neural text-to-speech
+-- through ElevenLabs API with voice selection and quality controls.
+entity ElevenLabsTTSConfig {
+    api_key: String
+    voice_id: String
+    model_id: String
+
+    -- Voice settings
+    stability: Float
+    similarity_boost: Float
+    style: Float
+    speaker_boost: Boolean
+}
+
+-- OpenAI TTS backend configuration. Uses OpenAI's TTS models
+-- (tts-1, tts-1-hd) for natural-sounding speech synthesis.
+entity OpenAITTSConfig {
+    api_key: String
+    model: String
+    voice: String
+
+    -- Audio format
+    response_format: String = "pcm"
+    speed: Float = 1.0
+}
+
+-- MiniMax TTS backend configuration. Provides text-to-speech through
+-- MiniMax's models with multi-language support and emotional synthesis.
+entity MiniMaxTTSConfig {
+    api_key: String
+    model: String
+    voice_id: String
+}
+
+-- Gabber TTS backend configuration. Native Gabber implementation for
+-- text-to-speech with custom models optimized for real-time audio pipeline.
+entity GabberTTSConfig {
+    model: String
+    voice_id: String
+}
+
+-- ============================================================================
+-- AUDIO PROCESSING
+-- ============================================================================
+
+-- Voice Activity Detection (VAD) using Silero VAD model. Detects whether
+-- audio frames contain speech or silence/noise.
+entity SileroVAD {
+    -- Model configuration
+    model_path: String = "silero_vad.onnx"
+    sample_rate: Integer = 16000
+    chunk_size: Integer = 512
+
+    -- VAD probability threshold for speech detection
+    threshold: Float = 0.5
+
+    -- Model state
+    initialized: Boolean
+    state_shape: Set<Integer> = {2, 1, 128}
+
+    -- Inference output
+    vad_probability: Float  -- 0.0 to 1.0
+}
+
+-- Audio resampler for sample rate conversion. Converts audio between
+-- different sample rates using FFmpeg for compatibility with downstream consumers.
+entity Resampler {
+    output_rate: Integer
+
+    -- Supported sample rates
+    supported_rates: Set<Integer> = {16000, 24000, 44100, 48000}
+
+    -- Conversion result
+    resampled_data: AudioFrameData
+}
+
+-- ============================================================================
+-- VIDEO PROCESSING
+-- ============================================================================
+
+-- MP4 video encoder for encoding video frames to MP4 format.
+-- Uses FFmpeg for H.264 encoding with configurable quality.
+entity MP4_Encoder {
+    -- Encoder configuration
+    preset: String = "ultrafast"
+    crf: Integer = 0              -- 0 = lossless
+    pixel_format: String = "yuv444p"
+    time_base: Fraction = 1/1000000
+
+    -- Frame input queue
+    input_queue: Set<VideoFrame>
+
+    -- Output
+    encoded_mp4: Bytes
+
+    -- Stream dimensions (auto-detected from first frame)
+    width: Integer
+    height: Integer
+}
+
+-- ============================================================================
+-- CONFIGURATION
+-- ============================================================================
+
+config {
+    -- LLM configuration
+    llm_first_token_timeout: Duration = 45.0.seconds
+    llm_total_timeout: Duration = 90.0.seconds
+    llm_max_context_tokens: Integer = 128000
+
+    -- STT configuration
+    stt_model: String = "nova-3-general"
+    stt_sample_rate: Integer = 24000
+    stt_endpointing_ms: Integer = 750
+
+    -- TTS configuration
+    tts_sample_rate: Integer = 24000
+    tts_channels: Integer = 1
+    tts_encoding: String = "pcm_s16le"
+
+    -- VAD configuration
+    vad_sample_rate: Integer = 16000
+    vad_chunk_size: Integer = 512
+    vad_threshold: Float = 0.5
+}
+
+-- ============================================================================
+-- OPEN QUESTIONS
+-- ============================================================================
+
+open question "STT backends: Should Kyutai, Assembly, and Gabber STT configurations be documented in detail?"
+open question "TTS backends: Should ElevenLabs, OpenAI, MiniMax, and Gabber TTS configurations be documented in detail?"
+open question "Video processing: Should additional video encoders (WebM, etc.) be supported?"
