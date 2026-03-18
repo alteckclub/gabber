@@ -4,6 +4,7 @@ use "./core.allium" as core
 
 -- Gabber Frontend Components Specification
 use "./repository.allium" as repository
+use "./editor.allium" as editor
 
 -- Formal specification of editor UI component behavior
 

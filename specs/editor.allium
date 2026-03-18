@@ -1,6 +1,7 @@
 -- allium: 2
 
 use "./core.allium" as core
+use "./engine.allium" as engine
 -- Gabber Editor Service WebSocket Protocol Specification
 -- Distilled from engine/gabber/core/editor/ implementation
 --
