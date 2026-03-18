@@ -12,6 +12,28 @@ use "./core.allium" as core
 --   - Repository service
 
 -- ============================================================================
+-- SCOPE: Audio Processing Microservices
+-- ============================================================================
+-- This spec defines the real-time audio processing microservices.
+--
+-- INCLUDES:
+--   - gabber-stt service: WebSocket server for speech-to-text
+--   - kitten-tts service: HTTP server for text-to-speech
+--   - WebSocket protocol for audio streaming
+--   - Audio inference pipeline (VAD, EOT, STT, LipSync)
+--   - Service composition and engine integration
+--
+-- RELATIONSHIP TO OTHER SPECS:
+--   - Library configs: see lib.allium (STT/TTS backend configurations)
+--   - Node definitions: see nodes.allium (STT/TTS node types)
+--   - Engine execution: see engine.allium (how services are invoked)
+--   - System architecture: see architecture.allium (service deployment)
+--
+-- EXCLUDES:
+--   - Library-level TTS/STT configs: see lib.allium
+--   - Node type definitions: see nodes.allium
+--   - Engine graph execution: see engine.allium
+--   - Frontend-Engine communication: see editor.allium
 -- SERVICES ARCHITECTURE
 -- ============================================================================
 

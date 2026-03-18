@@ -3,7 +3,27 @@
 use "./core.allium" as core
 
 
--- Scope: Gabber system architecture - all services and components
+-- ============================================================================
+-- SCOPE: Gabber System Architecture
+-- ============================================================================
+-- This spec defines the high-level system architecture and service composition.
+--
+-- INCLUDES:
+--   - Service definitions (Frontend, Editor, Engine, Repository, LiveKit)
+--   - System integrations and communication protocols
+--   - Deployment architecture
+--   - External service dependencies
+--
+-- EXCLUDES (see dedicated specs):
+--   - MCP protocol details: see mcp.allium
+--   - TTS/STT service implementations: see services.allium
+--   - TTS/STT library configs: see lib.allium
+--   - Node type definitions: see nodes.allium
+--   - Graph execution engine: see engine.allium
+--   - Editor WebSocket protocol: see editor.allium
+--   - Repository persistence: see repository.allium, repository_domain.allium, repository_persistence.allium
+--   - LiveKit/WebRTC details: see livekit.allium
+--   - Frontend components: see frontend_components.allium
 -- Includes: Frontend, Editor, Engine, Repository, LiveKit, MCP Proxy Client
 -- Excludes:
 --   - Individual node implementations (separate node specs)

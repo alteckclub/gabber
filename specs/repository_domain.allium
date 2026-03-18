@@ -4,7 +4,26 @@ use "./core.allium" as core
 
 
 -- ============================================================================
--- REPOSITORY DOMAIN SPECIFICATION
+-- ============================================================================
+-- SCOPE: Repository Domain Rules
+-- ============================================================================
+-- This module contains PURE DOMAIN RULES for app and subgraph management.
+--
+-- INCLUDES:
+--   - Business logic for app and subgraph operations
+--   - Validation rules for imports/exports
+--   - ID conflict resolution logic
+--   - Graph transformation rules
+--   - Secret handling rules
+--
+-- RELATIONSHIP TO OTHER SPECS:
+--   - API endpoints: see repository.allium (HTTP API layer)
+--   - Persistence: see repository_persistence.allium (file I/O)
+--   - LiveKit integration: see livekit.allium (connection details)
+--
+-- EXCLUDES:
+--   - File I/O operations: see repository_persistence.allium
+--   - HTTP API endpoints: see repository.allium
 -- ============================================================================
 -- This module contains PURE DOMAIN RULES for app and subgraph management.
 -- It describes WHAT operations do, not HOW they are persisted.

@@ -4,7 +4,32 @@ use "./core.allium" as core
 
 -- Gabber Engine Specification
 -- Distilled from engine/gabber/ implementation
+-- ============================================================================
+-- SCOPE: Graph Execution Engine
+-- ============================================================================
+-- This spec defines the core graph execution engine for Gabber.
 --
+-- INCLUDES:
+--   - Graph model and node execution lifecycle
+--   - Pad connection and type constraint system
+--   - Runtime data types and value propagation
+--   - State machine node execution
+--   - Subgraph composition
+--   - Request context and item handling
+--
+-- RELATIONSHIP TO OTHER SPECS:
+--   - Node libraries: see nodes.allium (node type definitions)
+--   - Library configs: see lib.allium (LLM, STT, TTS backends)
+--   - Service implementations: see services.allium (audio services)
+--   - Editor protocol: see editor.allium (graph edit protocol)
+--   - System architecture: see architecture.allium (EngineService)
+--
+-- EXCLUDES:
+--   - Specific node implementations: see nodes.allium
+--   - Editor WebSocket protocol: see editor.allium
+--   - Repository service: see repository.allium
+--   - LiveKit/WebRTC details: see livekit.allium
+--   - MCP integration: see mcp.allium
 -- Scope: Core graph execution engine for real-time AI applications
 -- Includes: Graph model, node execution, pad communication, type system
 -- Excludes:

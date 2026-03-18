@@ -2,6 +2,28 @@
 
 -- LiveKit/WebRTC Integration Specification
 -- Formal specification for LiveKit integration in Gabber
+--
+-- ============================================================================
+-- SCOPE: LiveKit/WebRTC Integration
+-- ============================================================================
+-- This spec defines the LiveKit/WebRTC integration for real-time media.
+--
+-- INCLUDES:
+--   - LiveKit room management and participant handling
+--   - Media stream subscription and publishing
+--   - Data channel protocol for runtime API and tool calls
+--   - Connection details and token generation
+--   - App run, debug, and MCP proxy connections
+--
+-- RELATIONSHIP TO OTHER SPECS:
+--   - MCP integration: see mcp.allium (uses LiveKit for data transport)
+--   - Repository service: see repository.allium (creates AppRunConnectionDetails)
+--   - Engine execution: see engine.allium (uses RoomSession for media)
+--   - System architecture: see architecture.allium (LiveKitService definition)
+--
+-- EXCLUDES:
+--   - MCP protocol details: see mcp.allium
+--   - Repository API endpoints: see repository.allium
 
 -- ============================================================================
 -- ENUMS AND TYPE DEFINITIONS

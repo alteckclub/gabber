@@ -5,7 +5,24 @@ use "./repository_domain.allium" as domain
 
 
 -- ============================================================================
--- REPOSITORY PERSISTENCE SPECIFICATION
+-- ============================================================================
+-- SCOPE: Repository Persistence Rules
+-- ============================================================================
+-- This module contains PERSISTENCE RULES for app and subgraph storage.
+--
+-- INCLUDES:
+--   - File I/O operations for app and subgraph storage
+--   - Directory listing and file reading/writing
+--   - Secret file operations
+--   - Storage path management
+--
+-- RELATIONSHIP TO OTHER SPECS:
+--   - Domain logic: see repository_domain.allium (business rules)
+--   - API endpoints: see repository.allium (HTTP API layer)
+--
+-- EXCLUDES:
+--   - Business logic: see repository_domain.allium
+--   - HTTP API endpoints: see repository.allium
 -- ============================================================================
 -- This module contains PERSISTENCE RULES for app and subgraph storage.
 -- It describes HOW data is stored, not the business logic.

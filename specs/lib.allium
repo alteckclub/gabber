@@ -4,7 +4,27 @@
 -- Distilled from engine/gabber/lib/ implementation
 
 -- ============================================================================
--- SCOPE
+-- ============================================================================
+-- SCOPE: Gabber Engine Library Implementations
+-- ============================================================================
+-- This spec defines library-level implementations used by the Gabber engine.
+--
+-- INCLUDES:
+--   - LLM Integration: OpenAI-compatible client, mock LLM, token estimator
+--   - STT Backends: Deepgram, Kyutai, Assembly, Gabber STT configurations
+--   - TTS Backends: Cartesia, ElevenLabs, OpenAI, MiniMax, Gabber TTS configs
+--   - Audio Processing: VAD (Silero), resampler configurations
+--   - Video Processing: MP4 encoder
+--
+-- RELATIONSHIP TO OTHER SPECS:
+--   - Service implementations: see services.allium (gabber-stt, kitten-tts services)
+--   - Node definitions: see nodes.allium (uses these library configs)
+--   - Engine execution: see engine.allium (how libraries are invoked)
+--
+-- EXCLUDES:
+--   - Service-level implementations: see services.allium
+--   - Node type definitions: see nodes.allium
+--   - Engine graph execution: see engine.allium
 -- ============================================================================
 
 -- This specification covers the Gabber engine library implementations:

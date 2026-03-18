@@ -4,7 +4,28 @@ use "./core.allium" as core
 use "./livekit.allium" as livekit
 -- MCP Integration Protocol Specification
 -- Formal specification for Model Context Protocol integration in Gabber
-
+-- ============================================================================
+-- SCOPE: MCP (Model Context Protocol) Integration
+-- ============================================================================
+-- This spec defines the MCP protocol integration for Gabber.
+--
+-- INCLUDES:
+--   - MCP protocol details and message format (JSON-RPC 2.0)
+--   - Data channel transport via LiveKit
+--   - Server discovery and provisioning
+--   - Connection provider semantics
+--   - Traffic proxying between Engine and MCP servers
+--
+-- RELATIONSHIP TO OTHER SPECS:
+--   - High-level architecture: see architecture.allium (references McpProxyClient)
+--   - LiveKit integration: see livekit.allium (uses RoomSession, DataChannelPacket)
+--   - Engine execution: see engine.allium (MCP runs as part of engine graph)
+--   - Node definitions: see nodes.allium (MCP node type definition)
+--   - Repository connection: see repository.allium (AppRunConnectionDetails)
+--
+-- EXCLUDES:
+--   - High-level system architecture: see architecture.allium
+--   - LiveKit/WebRTC implementation details: see livekit.allium
 -- Scope: MCP proxy client, computer use server, and engine integration
 -- Includes: Protocol details, data channel transport, server discovery, connection providers
 -- Deliverable: specs/mcp.allium

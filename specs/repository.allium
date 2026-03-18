@@ -6,7 +6,30 @@ use "./engine.allium" as engine
 -- Gabber Repository Service Specification
 -- Distilled from engine/gabber/services/repository/
 --
--- Scope: HTTP API for app and subgraph management
+-- ============================================================================
+-- SCOPE: Repository Service HTTP API
+-- ============================================================================
+-- This spec defines the Repository Service HTTP API for app and subgraph management.
+--
+-- INCLUDES:
+--   - App CRUD endpoints (list, get, create/update, delete)
+--   - Subgraph CRUD endpoints (list, get, create/update, delete)
+--   - Import/export functionality for apps and subgraphs
+--   - App execution endpoints (create run, debug connection, MCP proxy connection)
+--   - Secret management endpoints
+--   - Request/response schemas for all endpoints
+--
+-- RELATIONSHIP TO OTHER SPECS:
+--   - Domain logic: see repository_domain.allium (business rules)
+--   - Persistence: see repository_persistence.allium (file I/O operations)
+--   - LiveKit integration: see livekit.allium (AppRunConnectionDetails)
+--   - MCP integration: see mcp.allium (MCP proxy connection)
+--   - System architecture: see architecture.allium (RepositoryService)
+--
+-- EXCLUDES:
+--   - Graph editor protocol: see editor.allium
+--   - Engine graph execution: see engine.allium
+--   - STT/TTS services: see services.allium
 -- Includes: CRUD operations, import/export, secrets management, app execution
 -- Excludes:
 --   - Graph editor protocol (see editor.allium)

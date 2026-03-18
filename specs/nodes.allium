@@ -5,7 +5,35 @@ use "./engine.allium" as engine
 -- Gabber Node Library Specification
 -- Distilled from engine/gabber/nodes/ implementation
 
--- Scope: All node types for the Gabber graph execution engine
+-- ============================================================================
+-- SCOPE: Node Library Definitions
+-- ============================================================================
+-- This spec defines all node types available in the Gabber graph engine.
+--
+-- INCLUDES:
+--   - Core media nodes (AVClipZip, FPS, SlidingWindow, Publish, Output)
+--   - Core logic nodes (And, Or, Gate, Filter, Compare, EnumSwitch)
+--   - State machine node
+--   - Subgraph nodes (SubGraph, ProxyPropertySink/Source, ProxyStatelessSink/Source)
+--   - Tool nodes (MCP, ToolGroup)
+--   - Timing nodes (Delay, Ticker)
+--   - Primitive nodes (String, Integer, Float, Boolean, JSON, ContextMessage)
+--   - Utility nodes (Jinja2, Merge, AutoConvert, TypeConstraint, Noop)
+--   - Debug nodes (ChatInput, VisemeDebug)
+--   - STT nodes (STT, LocalSTT, MultiParticipantSTT, VAD, SileroVAD)
+--   - TTS nodes (TTS, CartesiaTTS, ElevenLabsTTS, OpenAITTS, MiniMaxTTS, KittenTTS)
+--   - LLM nodes (LLM, OpenAICompatibleLLM, MockLLM, LocalLLM, LLMContext)
+--   - Local nodes (LocalViseme)
+--
+-- RELATIONSHIP TO OTHER SPECS:
+--   - Engine execution: see engine.allium (how nodes execute)
+--   - Library configs: see lib.allium (backend configurations used by nodes)
+--   - Service implementations: see services.allium (service-level integrations)
+--   - Editor components: see frontend_components.allium (node picker, discovery)
+--
+-- EXCLUDES:
+--   - Engine graph execution: see engine.allium
+--   - Editor protocol: see editor.allium
 -- Includes: Core nodes, logic nodes, media nodes, primitive nodes, utility nodes,
 --           timing nodes, subgraph nodes, tool nodes, debug nodes, STT/TTS/LLM nodes
 -- Excludes:

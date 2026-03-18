@@ -5,7 +5,29 @@ use "./engine.allium" as engine
 -- Gabber Editor Service WebSocket Protocol Specification
 -- Distilled from engine/gabber/core/editor/ implementation
 --
--- Scope: WebSocket communication protocol for the visual graph editor
+-- ============================================================================
+-- SCOPE: Editor Service WebSocket Protocol
+-- ============================================================================
+-- This spec defines the WebSocket protocol for real-time collaborative graph editing.
+--
+-- INCLUDES:
+--   - WebSocket message types (requests and responses)
+--   - Graph serialization (GraphEditorRepresentation)
+--   - Edit operations (insert node, remove node, connect pad, etc.)
+--   - Real-time collaboration semantics
+--   - Node library queries
+--
+-- RELATIONSHIP TO OTHER SPECS:
+--   - Frontend components: see frontend_components.allium (client-side behavior)
+--   - Engine execution: see engine.allium (server-side graph execution)
+--   - Node definitions: see nodes.allium (available node types)
+--   - Repository: see repository.allium (app persistence)
+--   - System architecture: see architecture.allium (EditorService)
+--
+-- EXCLUDES:
+--   - Visual editor UI: see frontend_components.allium
+--   - Node type definitions: see nodes.allium
+--   - Transport layer details: implementation mechanism
 -- Includes: Message types, graph serialization, edit operations, collaboration semantics
 -- Excludes:
 --   - Visual editor UI implementation

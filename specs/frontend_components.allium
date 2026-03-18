@@ -8,7 +8,29 @@ use "./editor.allium" as editor
 
 -- Formal specification of editor UI component behavior
 
--- Scope: Frontend editor components and their interactions
+-- ============================================================================
+-- SCOPE: Frontend Editor Components
+-- ============================================================================
+-- This spec defines the client-side editor UI components and behavior.
+--
+-- INCLUDES:
+--   - Flow editor components (canvas, node picker, quick add modal)
+--   - State machine editor behavior
+--   - App edit operations (create, modify, save, run)
+--   - Subgraph management (create, embed, delete)
+--   - Tool configuration (MCP servers, tool groups)
+--   - Debug components (chat, viseme display, log viewer)
+--
+-- RELATIONSHIP TO OTHER SPECS:
+--   - Editor protocol: see editor.allium (WebSocket communication)
+--   - Engine execution: see engine.allium (server-side execution)
+--   - Node definitions: see nodes.allium (available node types)
+--   - Repository: see repository.allium (app persistence)
+--
+-- EXCLUDES:
+--   - Backend engine execution: see engine.allium
+--   - Node type definitions: see nodes.allium
+--   - Editor WebSocket protocol: see editor.allium
 -- Includes: Flow editor, state machine editor, app edit, subgraph management,
 --           tool configuration, debug components
 -- Excludes:
