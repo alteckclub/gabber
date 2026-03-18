@@ -99,8 +99,7 @@ entity ToolDefinition {
     destination: ToolDestination
 }
 
-enum ToolDestination { Webhook | Client }
-
+-- ToolDestination is defined in core.allium
 -- Lip-sync animation data (Viseme and VisemeType defined in core.allium)
 entity Viseme {
     value: VisemeType
@@ -408,14 +407,7 @@ entity StateMachineNode {
 }
 
 -- StateMachineConfiguration, StateMachineState, StateMachineTransition are defined in core.allium
-
-enum ComparisonOperator {
-    LT | LE | EQ | NE | GE | GT |
-    NON_EMPTY | EMPTY |
-    STARTS_WITH | ENDS_WITH | CONTAINS |
-    TRUE | FALSE
-}
-
+-- CompareOperator, CompareOperatorString, CompareOperatorNumeric, CompareOperatorBool are defined in nodes.allium
 rule StateMachineTransition {
     when: StateMachineNode.check_transitions(ctx, from_state, current_state)
 

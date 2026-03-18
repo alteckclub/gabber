@@ -52,14 +52,7 @@ enum CompareOperator {
     GE
     GT
 }
-
-enum MessageRole {
-    System
-    User
-    Assistant
-    Tool
-}
-
+-- MessageRole is defined in core.allium
 enum CompareOperatorString {
     EQUALS
     NOT_EQUALS
@@ -112,25 +105,7 @@ enum KittenTTSVoice {
     expr_voice_5_m
     expr_voice_5_f
 }
-
-enum VisemeType {
-    SILENCE
-    P
-    B
-    M
-    O
-    U
-    F
-    V
-    T_D_N
-    S_Z
-    TH
-    SH
-    K_G
-    L
-    R
-}
-
+-- VisemeType is defined in core.allium
 -- ============================================================================
 -- PAD TYPES (value types for pad metadata)
 -- ============================================================================
@@ -257,35 +232,10 @@ entity StateMachine {
     parameter_names: List<PropertySinkPad>
     parameter_values: List<SinkPad>
 }
-
-entity StateMachineConfiguration {
-    states: List<StateMachineState>
-    transitions: List<StateMachineTransition>
-    entry_state: String?
-    entry_node_position: Point?
-    special_any_state_position: Point?
-}
-
-entity StateMachineState {
-    id: String
-    name: String
-    position: Point
-}
-
-entity StateMachineTransition {
-    id: String
-    from_state: String
-    to_state: String
-    conditions: List<StateMachineTransitionCondition>
-}
-
-entity StateMachineTransitionCondition {
-    parameter_name: String?
-    operator: String?
-    value: Any?
-}
+-- StateMachineConfiguration, StateMachineState, StateMachineTransition, StateMachineTransitionCondition are defined in core.allium
 
 -- ============================================================================
+-- CORE SUBGRAPH NODES
 -- CORE SUBGRAPH NODES
 -- ============================================================================
 
@@ -728,7 +678,4 @@ entity PadDefinition {
     default_type_constraints: Set<PadConstraint>
 }
 
-enum Direction {
-    Sink
-    Source
-}
+-- Direction is defined in core.allium
