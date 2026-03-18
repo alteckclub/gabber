@@ -172,6 +172,11 @@ entity ProxySupervisor {
 rule MCPServerConfigurationLoad {
     when: provider: MCPServerProvider.get_config
 
+    requires: provider.config_file != null
+
+    @guidance
+        -- Precondition: provider.config_file exists and is valid YAML matching MCPServerConfig schema.
+
     ensures:
         config = MCPServerConfig(servers = provider servers)
         for server in config.servers:
@@ -186,6 +191,9 @@ rule MCPProxyLifecycle {
     when: proxy: MCPProxy.run
 
     requires: proxy.is_running = False
+
+    @guidance
+        -- Precondition: proxy.room exists and is accessible, proxy.server.transport is configured.
 
     ensures: proxy.is_running = True
     ensures: proxy.session != null
@@ -202,6 +210,9 @@ rule MCPProxyCleanup {
 
     requires: proxy.is_running = True
 
+    @guidance
+        -- Precondition: Graceful shutdown signal received or error condition.
+
     ensures: proxy.is_running = False
     ensures: proxy.session = null
 
@@ -213,6 +224,11 @@ rule MCPProxyCleanup {
 
 rule DataChannelMessageRouting {
     when: packet: DataPacket
+
+    requires: packet.data != null
+
+    @guidance
+        -- Precondition: packet.data is valid JSON string, proxy for mcp_name exists and is running.
 
     ensures:
         if packet.topic.endswith(config.data_channel_topic_prefix + ":"):
@@ -228,6 +244,11 @@ rule DataChannelMessageRouting {
 rule MCPMessageValidation {
     when: message: JSONRPCMessage
 
+    requires: message.jsonrpc != null
+
+    @guidance
+        -- Precondition: message is valid JSON-RPC 2.0 format, if message has id it is string/integer.
+
     ensures: message.jsonrpc = config.json_rpc_version
 
     @guidance
@@ -237,6 +258,12 @@ rule MCPMessageValidation {
 
 rule ServerDiscoveryAndProvisioning {
     when: app: App.run
+
+    requires: app.connection != null
+    requires: app.server_provider.get_config.servers != empty
+
+    @guidance
+        -- Precondition: app.connection exists and is active, servers are unique by name.
 
     ensures:
         config = app.server_provider.get_config
@@ -257,6 +284,12 @@ rule ServerDiscoveryAndProvisioning {
 rule ConnectionProviderResolution {
     when: provider: LocalConnectionProvider.get_connection(run_id)
 
+    requires: run_id != null
+    requires: run_id != ""
+
+    @guidance
+        -- Precondition: run_id is valid room identifier, Repository service is accessible.
+
     ensures:
         details = ConnectionDetails(
             url = provider.api_url + "/livekit",
@@ -272,6 +305,12 @@ rule ConnectionProviderResolution {
 
 rule ProxySupervision {
     when: supervisor: ProxySupervisor.add_server(server)
+
+    requires: server != null
+    requires: supervisor.room != null
+
+    @guidance
+        -- Precondition: server is valid MCPServer configuration, supervisor.room is active.
 
     ensures:
         proxy = MCPProxy.created(

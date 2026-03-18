@@ -62,6 +62,9 @@ entity Transition {
 -- ============================================================================
 
 -- FrontendService is the NextJS web UI for building and running apps
+-- Purpose: Web application interface for building and managing Gabber apps.
+-- Provides the NextJS UI that communicates with EditorService for real-time
+-- graph editing and with EngineService for app execution.
 entity FrontendService {
     port: Integer = 3000
     service_type: web_application
@@ -77,6 +80,9 @@ entity FrontendService {
 }
 
 -- EditorService is the backend server for the frontend UI
+-- Purpose: Backend WebSocket server providing real-time collaborative graph editing.
+-- Manages user sessions, handles graph modifications, and shares state with
+-- FrontendService. Acts as the central coordination point for app development.
 entity EditorService {
     port: Integer = 8000
     service_type: websocket_server
@@ -93,6 +99,10 @@ entity EditorService {
 }
 
 -- EngineService is the runtime responsible for executing apps
+-- Purpose: Runtime engine responsible for executing Gabber apps.
+-- Handles graph execution, node lifecycle management, media stream processing,
+-- and integration with LiveKit for real-time audio/video. Executes the actual
+-- AI application logic defined by users.
 entity EngineService {
     service_type: execution_engine
     protocol: websocket
@@ -115,6 +125,10 @@ entity EngineService {
 }
 
 -- RepositoryService is a thin HTTP server for fetching/saving apps
+-- Purpose: HTTP server providing persistent storage for apps and subgraphs.
+-- Implements CRUD operations for repository data, manages import/export
+-- functionality, and handles secret storage. Serves as the backing store
+-- for the FrontendService.
 entity RepositoryService {
     port: Integer = 8001
     service_type: http_server
@@ -133,6 +147,10 @@ entity RepositoryService {
 }
 
 -- LiveKitService is a WebRTC server for media streaming
+-- Purpose: WebRTC server enabling real-time media streaming.
+-- Provides room management, participant handling, and media distribution
+-- for voice and video communication. Used by EngineService for audio
+-- processing and by FrontendService for user interaction.
 entity LiveKitService {
     ws_port: Integer = 7880
     http_port: Integer = 7881
@@ -159,6 +177,9 @@ entity LiveKitService {
 -- KittenTTSService defined in services.allium
 
 -- LocalLLMService provides local LLM inference
+-- Purpose: Local large language model inference service.
+-- Provides on-premise LLM capabilities without external API dependencies.
+-- Supports multiple backends (llama.cpp, vllm) for flexible deployment.
 entity LocalLLMService {
     service_type: llm_service
     implementation: llama.cpp | vllm

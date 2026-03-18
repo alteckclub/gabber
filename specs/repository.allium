@@ -751,8 +751,13 @@ rule update_graph_subgraph_references {
 -- ============================================================================
 
 -- Request types
+-- Request types used by HTTP API endpoints.
+-- Each request type corresponds to a specific endpoint operation.
 
 entity SaveSubgraphRequest {
+-- Usage: POST /sub_graph with SaveSubgraphRequest creates a new subgraph
+--        POST /sub_graph with id set updates an existing subgraph
+-- Example: { "type": "SaveSubgraphRequest", "name": "my-subgraph", "graph": {...} }
     type: String
     id: String?                 -- Optional for updates
     name: String
@@ -760,6 +765,8 @@ entity SaveSubgraphRequest {
 }
 
 entity SaveAppRequest {
+-- Usage: POST /app creates a new app (id=null) or updates existing (id set)
+-- Example: { "type": "SaveAppRequest", "name": "my-app", "graph": {...} }
     type: String
     id: String?                 -- Optional for updates
     name: String
@@ -767,116 +774,174 @@ entity SaveAppRequest {
 }
 
 entity CreateAppRunRequest {
+-- Usage: POST /app/run to start app execution in a LiveKit room
+-- The run_id becomes the room name, graph is encoded into room metadata
+-- Example: { "type": "CreateAppRunRequest", "run_id": "session-123", "graph": {...} }
     type: String
     run_id: String              -- Room name/ID
     graph: GraphEditorRepresentation
 }
 
 entity DebugConnectionRequest {
+-- Usage: POST /app/debug_connection to get read-only access for debugging
+-- Returns connection details plus the current graph state from the running app
+-- Example: { "type": "DebugConnectionRequest", "run_id": "session-123" }
     type: String
     run_id: String
 }
 
 entity MCPProxyConnectionRequest {
+-- Usage: POST /app/mcp_proxy_connection to enable MCP server connections
+-- Returns credentials for MCP proxy client to join the app's LiveKit room
+-- Example: { "type": "MCPProxyConnectionRequest", "run_id": "session-123" }
     type: String
     run_id: String
 }
 
 entity ImportAppRequest {
+-- Usage: POST /app/import to restore an app from export
+-- Reconstructs app and all subgraphs with ID conflict resolution
+-- Example: { "type": "ImportAppRequest", "export": AppExport {...} }
     type: String
     export: AppExport
 }
 
 entity ImportSubGraphRequest {
+-- Usage: POST /sub_graph/import to restore subgraph with nested dependencies
+-- Recursively imports all nested subgraphs with ID conflict resolution
+-- Example: { "type": "ImportSubGraphRequest", "export": SubGraphExport {...} }
     type: String
     export: SubGraphExport
 }
 
 entity AddSecretRequest {
+-- Usage: POST /secret to add a new secret (e.g., API key for node configuration)
+-- Secret values are stored encrypted and referenced by nodes via secret_id
+-- Example: { "type": "AddSecretRequest", "name": "OPENAI_API_KEY", "value": "sk-..." }
     type: String
     name: String
     value: String
 }
 
 entity UpdateSecretRequest {
+-- Usage: PUT /secret/{name} to update an existing secret's value
+-- Returns 404 if secret name doesn't exist
+-- Example: { "type": "UpdateSecretRequest", "value": "sk-newvalue" }
     type: String
     value: String
 }
 
 -- Response types
+-- Response types returned by HTTP API endpoints.
+-- Each response includes a type field for client deserialization.
 
 entity GetAppResponse {
+-- Returned by: GET /app/{id}
+-- Contains full app details including graph definition
     type: String
     app: RepositoryApp
 }
 
 entity SaveAppResponse {
+-- Returned by: POST /app (create/update)
+-- On success: returns saved app with generated/confirmed ID
+-- On update failure: returns 404 if app doesn't exist
     type: String
     app: RepositoryApp
 }
 
 entity ListAppsResponse {
+-- Returned by: GET /app/list, GET /example/list
+-- Apps sorted by created_at descending (newest first)
     type: String
     apps: List<RepositoryApp>
 }
 
 entity GetSubgraphResponse {
+-- Returned by: GET /sub_graph/{id}, GET /premade_subgraph/{id}
+-- Contains full subgraph details including graph definition
     type: String
     sub_graph: RepositorySubGraph
 }
 
 entity SaveSubgraphResponse {
+-- Returned by: POST /sub_graph (create/update)
+-- On success: returns saved subgraph with generated/confirmed ID
     type: String
     sub_graph: RepositorySubGraph
 }
 
 entity ListSubgraphsResponse {
+-- Returned by: GET /sub_graph/list, GET /premade_subgraph/list
+-- Subgraphs sorted by created_at descending (newest first)
     type: String
     sub_graphs: List<RepositorySubGraph>
 }
 
 entity CreateAppRunResponse {
+-- Returned by: POST /app/run
+-- Connection details include LiveKit URL and JWT token for room access
+-- Token grants: room_join, can_publish, can_subscribe
     type: String
     connection_details: AppRunConnectionDetails
 }
 
 entity DebugConnectionResponse {
+-- Returned by: POST /app/debug_connection
+-- Token grants: room_join, can_subscribe, can_publish_data (read-only video, data channel write)
     type: String
     connection_details: AppRunConnectionDetails
     graph: GraphEditorRepresentation
 }
 
 entity MCPProxyConnectionResponse {
+-- Returned by: POST /app/mcp_proxy_connection
+-- Token grants: room_join, can_subscribe, can_publish_data (for MCP traffic)
     type: String
     connection_details: AppRunConnectionDetails
 }
 
 entity ExportAppResponse {
+-- Returned by: GET /app/{id}/export
+-- Includes app and all subgraphs referenced in the app's graph
     type: String
     export: AppExport
 }
 
 entity ExportSubGraphResponse {
+-- Returned by: GET /sub_graph/{id}/export
+-- Recursively includes all nested subgraphs referenced transitively
     type: String
     export: SubGraphExport
 }
 
 entity ListSecretsResponse {
+-- Returned by: GET /secret/list
+-- Returns only secret names, not values (security)
     type: String
     secrets: List<PublicSecret>
 }
 
 entity AddSecretResponse {
+-- Returned by: POST /secret
+-- On success: secret stored in .secret file
+-- May fail if secret name conflicts or write fails
     type: String
     success: Boolean
 }
 
 entity UpdateSecretResponse {
+-- Returned by: PUT /secret/{name}
+-- On success: secret value updated
+-- On failure: returns 404 if name not found
     type: String
     success: Boolean
 }
 
 entity DeleteSecretResponse {
+-- Returned by: DELETE /secret/{name}
+-- On success: secret removed from .secret file
+-- On failure: returns 404 if name not found
     type: String
     success: Boolean
 }

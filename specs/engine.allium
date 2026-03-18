@@ -135,6 +135,8 @@ rule PadTypeCompatibility {
 -- Used to determine if two pads can connect (intersection must be non-empty).
 -- Example: INTERSECTION({String, Integer}, {String, Boolean}) = {String}
 rule INTERSECTION {
+    -- Type signature: INTERSECTION(Set<TypeConstraint>, Set<TypeConstraint>) -> Set<TypeConstraint>
+    -- Complexity: O(n * m) where n, m are sizes of input sets
     when: INTERSECTION(set1: Set<TypeConstraint>, set2: Set<TypeConstraint>)
 
     ensures:
@@ -153,6 +155,8 @@ rule INTERSECTION {
 -- Used for propagating type constraints across a connected pad cluster.
 -- Example: connected_pad_cluster(pad_a) = {pad_a, pad_b, pad_c} if they are all connected
 rule connected_pad_cluster {
+    -- Type signature: connected_pad_cluster(Pad) -> Set<Pad>
+    -- Complexity: O(v + e) where v is pads in cluster, e is connections
     when: connected_pad_cluster(pad: Pad)
 
     ensures:
@@ -177,6 +181,7 @@ rule connected_pad_cluster {
 -- Pad type constraint operations
 -- These describe the semantics of type constraint propagation
 rule pad_get_type_constraints {
+    -- Type signature: pad.get_type_constraints() -> Set<TypeConstraint>
     when: pad.get_type_constraints()
 
     ensures: pad._type_constraints
@@ -184,6 +189,7 @@ rule pad_get_type_constraints {
 
 
 rule pad_set_type_constraints {
+    -- Type signature: pad.set_type_constraints(Set<TypeConstraint>) -> Unit
     when: pad.set_type_constraints(constraints: Set<TypeConstraint>)
 
     ensures: pad._type_constraints = constraints
@@ -191,6 +197,7 @@ rule pad_set_type_constraints {
 
 
 rule pad_get_default_type_constraints {
+    -- Type signature: pad.get_default_type_constraints() -> Set<TypeConstraint>
     when: pad.get_default_type_constraints()
 
     ensures: pad._default_type_constraints
@@ -210,6 +217,7 @@ rule pad_get_default_type_constraints {
 -- Check if a pad can connect to another
 -- Semantic: Returns true if type constraints have non-empty intersection
 rule pad_can_connect {
+    -- Type signature: source_pad.can_connect(SinkPad) -> Boolean
     when: source_pad.can_connect(target: SinkPad)
 
     ensures:
@@ -223,6 +231,7 @@ rule pad_can_connect {
 
 -- Pad navigation operations
 rule pad_get_previous_pad {
+    -- Type signature: pad.get_previous_pad() -> Pad?
     when: pad.get_previous_pad()
 
     ensures: pad._previous_pad
@@ -230,6 +239,7 @@ rule pad_get_previous_pad {
 
 
 rule pad_get_next_pads {
+    -- Type signature: pad.get_next_pads() -> Set<Pad>
     when: pad.get_next_pads()
 
     ensures: pad._next_pads
@@ -237,6 +247,7 @@ rule pad_get_next_pads {
 
 
 rule pad_set_previous_pad {
+    -- Type signature: pad.set_previous_pad(Pad?) -> Unit
     when: pad.set_previous_pad(previous_pad: Pad?)
 
     ensures: pad._previous_pad = previous_pad
@@ -244,6 +255,7 @@ rule pad_set_previous_pad {
 
 
 rule pad_add_next_pad {
+    -- Type signature: pad.add_next_pad(Pad) -> Unit
     when: pad.add_next_pad(next_pad: Pad)
 
     ensures: pad._next_pads.add(next_pad)
@@ -262,6 +274,7 @@ rule pad_add_next_pad {
 
 -- Create new context
 rule request_context_new {
+    -- Type signature: new_context(RequestContext?) -> RequestContext
     when: new_context(parent: RequestContext)
 
     ensures:
@@ -276,6 +289,7 @@ rule request_context_new {
 
 -- Complete request context
 rule request_context_complete {
+    -- Type signature: ctx.complete() -> Unit
     when: ctx.complete()
 
     ensures: ctx._complete = true
@@ -289,6 +303,7 @@ rule request_context_complete {
 
 -- Create item with value and context
 rule item_create {
+    -- Type signature: Item.created(RuntimeValue, RequestContext) -> Item
     when: Item.created(value: RuntimeValue, ctx: RequestContext)
 
     ensures:
@@ -298,6 +313,7 @@ rule item_create {
 
 -- Queue operations
 rule queue_put {
+    -- Type signature: queue.put(Item) -> Unit
     when: queue.put(item: Item)
 
     ensures: queue.add(item)
@@ -306,6 +322,7 @@ rule queue_put {
 
 -- Get queue from sink pad
 rule sink_pad_get_queue {
+    -- Type signature: sink_pad._get_queue() -> Queue<Item>
     when: sink_pad._get_queue()
 
     ensures: sink_pad._queue
