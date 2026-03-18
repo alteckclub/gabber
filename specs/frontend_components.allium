@@ -3,6 +3,8 @@
 use "./core.allium" as core
 
 -- Gabber Frontend Components Specification
+use "./repository.allium" as repository
+
 -- Formal specification of editor UI component behavior
 
 -- Scope: Frontend editor components and their interactions
@@ -17,11 +19,88 @@ use "./core.allium" as core
 -- DOMAIN ENTITIES
 -- ============================================================================
 
--- FlowGraph, NodeInstance, PadInstance, Connection, Portal, PortalEnd
+-- FlowGraph, NodeInstance, PadInstance are client-side entities defined below
+-- Connection, Portal, PortalEnd, Point, ViewportState, Direction are from core.allium
 -- Point, ViewportState, Direction are defined in core.allium
 
 -- Client-side extensions
 
+-- ============================================================================
+-- ACTORS
+-- ============================================================================
+
+-- User with editor access permissions
+actor EditorUser {}
+-- Developer with debug access permissions
+actor Developer {}
+
+-- ============================================================================
+-- CLIENT-SIDE DOMAIN ENTITIES
+-- ============================================================================
+
+-- Pending connection state during user interaction
+entity PendingConnection {
+    source_node: String
+    source_pad: String
+    add_position: Point
+    target_node: String?
+    target_pad: String?
+}
+-- Client-side pad value representation
+value ClientPadValue {
+    kind: String | Integer | Float | Boolean | Object
+    value: Any
+}
+
+-- Reference to a pad by node and pad ID
+value PadReference { node: String, pad: String }
+
+-- Eligible library item for node insertion
+entity EligibleLibraryItem {
+    library_item: core/LibraryItem
+    pads: Set<core/PadDefinition>
+    compatibility_score: Float
+}
+
+-- Node wrapper for state machine configuration
+entity StateMachineNode {
+    id: String
+    configuration: StateMachineConfiguration
+    parameter_pads: Set<PadInstance>
+}
+
+-- Editor representation of a graph (client-side view)
+entity FlowGraph {
+    id: String
+    nodes: Set<NodeInstance>
+    connections: Set<Connection>
+    portals: Set<Portal>
+    viewport: ViewportState
+}
+
+-- Runtime instance of a node in the editor
+entity NodeInstance {
+    id: String
+    node_type: String
+    position: Point
+    dimensions: Point?
+    pads: Set<PadInstance>
+    properties: Map<String, Any>
+}
+
+-- Runtime instance of a pad in the editor
+entity PadInstance {
+    id: String
+    node_id: String
+    name: String
+    type: String
+    direction: Direction
+    value: Any?
+}
+
+
+-- ============================================================================
+-- STATE MACHINE DOMAIN
 -- ============================================================================
 -- STATE MACHINE DOMAIN
 -- ============================================================================
@@ -293,6 +372,37 @@ entity UserSendsChatMessage {
 }
 
 entity UserClearsLogs {}
+-- System triggers for debug session events
+entity ChatMessageReceived {
+    message: ChatMessage
+}
+
+entity VisemeDataReceived {
+    viseme_type: String
+    value: Float
+}
+
+entity LogEntryReceived {
+    level: String
+    message: String
+    metadata: Any?
+}
+
+-- System triggers for debug session events
+entity ChatMessageReceived {
+    message: ChatMessage
+}
+
+entity VisemeDataReceived {
+    viseme_type: String
+    value: Float
+}
+
+entity LogEntryReceived {
+    level: String
+    message: String
+    metadata: Any?
+}
 
 -- ============================================================================
 -- MODULE: Flow Editor Behavior
@@ -549,15 +659,7 @@ rule EntryNodeDrag {
 -- ============================================================================
 
 given {
-    app: AppDefinition
-}
-
-entity AppDefinition {
-    id: String
-    name: String
-    graph: GraphEditorRepresentation
-    unsaved_changes: Boolean
-    is_running: Boolean
+    app: repository/App
 }
 
 -- User modifies graph while app is not running
@@ -989,7 +1091,7 @@ surface FlowGraphCanvas {
 surface AppEditPage {
     facing user: EditorUser
 
-    context app: AppDefinition
+    context app: repository/App
 
     exposes:
         app.name
@@ -1106,9 +1208,9 @@ surface LogViewer {
 -- ============================================================================
 
 invariant ValidNodeConnections {
-    for conn in Connection:
-        count(PadInstance where node_id = conn.source_node and id = conn.source_pad) > 0
-        count(PadInstance where node_id = conn.target_node and id = conn.target_pad) > 0
+    for conn in core/Connection:
+        count(PadInstance where node_id = conn.source_node.id and id = conn.source_pad.id) > 0
+        count(PadInstance where node_id = conn.target_node.id and id = conn.target_pad.id) > 0
 }
 
 invariant UniqueStateIds {
@@ -1125,15 +1227,15 @@ invariant ValidTransitions {
 }
 
 invariant NoOrphanPortals {
-    for p in Portal:
-        count(PadInstance where node_id = p.source_node and id = p.source_pad) > 0
+    for p in core/Portal:
+        count(PadInstance where node_id = p.source_node.id and id = p.source_pad.id) > 0
 }
 
 invariant PortalEndValidity {
-    for pe in PortalEnd:
-        count(Portal where id = pe.portal_id) > 0
+    for pe in core/PortalEnd:
+        count(core/Portal where id = pe.portal_id) > 0
         for pr in pe.next_pads:
-            count(NodeInstance where id = pr.node) > 0
+            count(NodeInstance where id = pr.id) > 0
 }
 
 -- ============================================================================
